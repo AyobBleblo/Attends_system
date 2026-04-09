@@ -1,0 +1,326 @@
+You are an expert full-stack developer. Build a complete University Attendance System with Django REST Framework backend + React frontend. Follow every instruction exactly.
+
+---
+
+## 1. SETUP & TOOLS
+- Use `uv` as the ONLY package manager for Python (no pip)
+- Use `npm` for React
+- Python 3.12+, Django 5.x, PostgreSQL
+
+---
+
+## 2. PROJECT STRUCTURE
+attendance_system/
+├── backend/
+│   ├── pyproject.toml
+│   ├── .env
+│   ├── config/
+│   │   ├── settings.py
+│   │   ├── urls.py
+│   │   └── wsgi.py
+│   ├── core/          (Department, Semester)
+│   ├── accounts/      (Student, Professor)
+│   ├── courses/       (Course, CourseAssignment)
+│   └── attendance/    (Enrollment, Session, Attendance)
+│
+├── frontend/
+│   ├── package.json
+│   └── src/
+│       ├── App.jsx
+│       ├── main.jsx
+│       ├── api/
+│       │   └── axios.js
+│       └── pages/
+│           ├── Dashboard.jsx
+│           ├── ProfessorView.jsx
+│           ├── StudentScan.jsx
+│           └── AttendanceReport.jsx
+│
+├── erd.html
+├── SCENARIO.md
+└── README.md
+
+---
+
+## 3. BACKEND
+
+### 3.1 uv setup commands (put in README.md)
+```bash
+cd backend
+uv init
+uv add django djangorestframework django-cors-headers psycopg2-binary python-dotenv djangorestframework-simplejwt qrcode Pillow
+uv run django-admin startproject config .
+uv run python manage.py startapp core
+uv run python manage.py startapp accounts
+uv run python manage.py startapp courses
+uv run python manage.py startapp attendance
+```
+
+### 3.2 .env file
+SECRET_KEY=your-secret-key-here
+DEBUG=True
+DB_NAME=attendance_db
+DB_USER=postgres
+DB_PASSWORD=postgres
+DB_HOST=localhost
+DB_PORT=5432
+ALLOWED_HOSTS=localhost,127.0.0.1
+CORS_ALLOWED_ORIGINS=http://localhost:5173
+
+### 3.3 settings.py
+- Load all config from .env using python-dotenv
+- INSTALLED_APPS: add rest_framework, corsheaders, simplejwt, and all 4 apps
+- CORS_ALLOWED_ORIGINS from .env
+- REST_FRAMEWORK default auth: JWTAuthentication
+- DATABASES: use all DB_* vars from .env
+
+### 3.4 Models
+
+**core/models.py**
+```python
+class Department(models.Model):
+    name = models.CharField(max_length=100)
+    code = models.CharField(max_length=20, unique=True)
+
+class Semester(models.Model):
+    name = models.CharField(max_length=100)
+    start_date = models.DateField()
+    end_date = models.DateField()
+    is_active = models.BooleanField(default=False)
+    
+    def save(self, *args, **kwargs):
+        if self.is_active:
+            Semester.objects.exclude(pk=self.pk).update(is_active=False)
+        super().save(*args, **kwargs)
+```
+
+**accounts/models.py**
+```python
+class Student(models.Model):
+    student_id = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=100)
+    department = models.ForeignKey(Department, on_delete=models.CASCADE)
+
+class Professor(models.Model):
+    professor_id = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=100)
+    department = models.ForeignKey(Department, on_delete=models.CASCADE)
+```
+
+**courses/models.py**
+```python
+class Course(models.Model):
+    code = models.CharField(max_length=20, unique=True)
+    name = models.CharField(max_length=100)
+    department = models.ForeignKey(Department, on_delete=models.CASCADE)
+
+class CourseAssignment(models.Model):
+    professor = models.ForeignKey(Professor, on_delete=models.CASCADE)
+    course = models.ForeignKey(Course, on_delete=models.CASCADE)
+    semester = models.ForeignKey(Semester, on_delete=models.CASCADE)
+    
+    class Meta:
+        unique_together = ('professor', 'course', 'semester')
+```
+
+**attendance/models.py**
+```python
+class Enrollment(models.Model):
+    student = models.ForeignKey(Student, on_delete=models.CASCADE)
+    course = models.ForeignKey(Course, on_delete=models.CASCADE)
+    semester = models.ForeignKey(Semester, on_delete=models.CASCADE)
+    
+    class Meta:
+        unique_together = ('student', 'course', 'semester')
+
+class Session(models.Model):
+    course = models.ForeignKey(Course, on_delete=models.CASCADE)
+    professor = models.ForeignKey(Professor, on_delete=models.CASCADE)
+    semester = models.ForeignKey(Semester, on_delete=models.CASCADE)
+    date_time = models.DateTimeField(auto_now_add=True)
+    qr_token = models.CharField(max_length=100, unique=True)
+    qr_expires_at = models.DateTimeField()
+    
+    def save(self, *args, **kwargs):
+        if not self.qr_token:
+            self.qr_token = str(uuid.uuid4())
+        if not self.qr_expires_at:
+            self.qr_expires_at = now() + timedelta(minutes=15)
+        super().save(*args, **kwargs)
+
+class Attendance(models.Model):
+    STATUS_CHOICES = [('present','Present'),('late','Late'),('absent','Absent')]
+    session = models.ForeignKey(Session, on_delete=models.CASCADE)
+    student = models.ForeignKey(Student, on_delete=models.CASCADE)
+    scanned_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=10, choices=STATUS_CHOICES, default='present')
+    
+    class Meta:
+        unique_together = ('session', 'student')
+```
+
+### 3.5 attendance/services.py
+```python
+def record_attendance(student_id: str, qr_token: str) -> dict:
+    # 1. Find session by qr_token
+    # 2. Check QR not expired
+    # 3. Check active semester matches session semester
+    # 4. Check student enrolled in course (Enrollment)
+    # 5. Check no duplicate attendance (unique_together)
+    # 6. Create Attendance record
+    # 7. Return {"success": True, "message": "..."} or {"success": False, "error": "..."}
+```
+
+### 3.6 API Endpoints (Django REST Framework)
+
+Build these endpoints:
+POST   /api/auth/login/              → JWT login (returns access + refresh tokens)
+POST   /api/auth/refresh/            → refresh token
+GET    /api/departments/             → list departments
+GET    /api/semesters/active/        → get active semester
+GET    /api/professor/<id>/courses/  → courses assigned to professor this semester
+POST   /api/sessions/create/         → create session + generate QR (professor only)
+GET    /api/sessions/<id>/qr/        → return QR code as base64 image
+POST   /api/attendance/scan/         → student scans QR { student_id, qr_token }
+GET    /api/attendance/session/<id>/ → attendance list for a session
+GET    /api/attendance/report/       → full report filtered by course/semester/student
+GET    /api/students/                → list students
+GET    /api/courses/                 → list courses
+
+### 3.7 Seed Data (management command)
+Create `backend/core/management/commands/seed.py` that creates:
+- 2 Departments: Computer Science (CS), Information Technology (IT)
+- 1 active Semester: "Semester 1 - 2025"
+- 3 Courses: Database Systems CS301, Web Development CS302, Algorithms CS303
+- 2 Professors: Dr. Ahmed (CS), Dr. Sara (IT)
+- 5 Students: 3 in CS, 2 in IT
+- CourseAssignments: Dr. Ahmed teaches CS301 and CS302
+- Enrollments: all CS students enrolled in CS301 and CS302
+- Run with: `uv run python manage.py seed`
+
+---
+
+## 4. FRONTEND (React + Vite)
+
+### 4.1 Setup commands (put in README.md)
+```bash
+cd frontend
+npm create vite@latest . -- --template react
+npm install axios react-router-dom react-qr-reader qrcode.react lucide-react
+```
+
+### 4.2 src/api/axios.js
+- Base URL: http://localhost:8000/api
+- Attach JWT token from localStorage to every request
+- Auto-refresh token on 401
+
+### 4.3 Pages to build
+
+**Dashboard.jsx** — home page showing:
+- Active semester name
+- Total students, courses, professors (fetched from API)
+- Quick links to all pages
+
+**ProfessorView.jsx** — professor workflow:
+- Dropdown to select professor (for testing, no real auth needed)
+- Shows assigned courses for active semester
+- "Start Session" button for each course
+- When clicked: calls POST /api/sessions/create/ and shows QR code (use qrcode.react)
+- QR auto-refreshes every 30 seconds (creates new session)
+- Shows live attendance count for current session
+
+**StudentScan.jsx** — student workflow:
+- Input field for Student ID
+- QR scanner using device camera (react-qr-reader)
+- OR manual token input for testing (text field + submit button)
+- Shows success ✅ or error ❌ message after scan
+
+**AttendanceReport.jsx** — report page:
+- Filter by: course, semester, professor
+- Table showing: student name, student_id, session date, status
+- Summary: total present / total enrolled / attendance %
+- Export button (simple CSV download)
+
+### 4.4 Styling
+- Use plain CSS modules (no Tailwind, no frameworks)
+- Clean modern university-style design
+- Color scheme: primary #1a56db (blue), success #0e9f6e (green), danger #e02424 (red)
+- Responsive for mobile (important for student QR scan page)
+- Dark/light mode toggle stored in localStorage
+
+---
+
+## 5. ERD FILE (erd.html)
+Create a standalone `erd.html` in the project root:
+- Uses Mermaid.js via CDN (no install needed)
+- Shows complete ERD with all models, fields, and relationships
+- Color-coded by app: core=blue, accounts=green, courses=purple, attendance=orange
+- Dark/light mode toggle
+- Open directly in browser, no server needed
+
+The ERD:
+erDiagram
+Department ||--o{ Student : "belongs to"
+Department ||--o{ Professor : "belongs to"
+Department ||--o{ Course : "owns"
+Semester ||--o{ Enrollment : "has"
+Semester ||--o{ Session : "has"
+Semester ||--o{ CourseAssignment : "has"
+Student ||--o{ Enrollment : "registers"
+Student ||--o{ Attendance : "attends"
+Course ||--o{ Enrollment : "enrolled in"
+Course ||--o{ CourseAssignment : "assigned"
+Course ||--o{ Session : "has"
+Professor ||--o{ CourseAssignment : "teaches"
+Professor ||--o{ Session : "creates"
+Session ||--o{ Attendance : "records"
+Department { int id PK  string name  string code }
+Student { int id PK  string student_id UK  string name  int department_id FK }
+Professor { int id PK  string professor_id UK  string name  int department_id FK }
+Course { int id PK  string code UK  string name  int department_id FK }
+Semester { int id PK  string name  date start_date  date end_date  bool is_active }
+CourseAssignment { int id PK  int professor_id FK  int course_id FK  int semester_id FK }
+Enrollment { int id PK  int student_id FK  int course_id FK  int semester_id FK }
+Session { int id PK  int course_id FK  int professor_id FK  int semester_id FK  datetime date_time  string qr_token  datetime qr_expires_at }
+Attendance { int id PK  int session_id FK  int student_id FK  datetime scanned_at  string status }
+
+---
+
+## 6. SCENARIO.md
+Write a full markdown file documenting the complete user journey:
+1. Admin setup (departments, semester, courses, professors, students)
+2. Professor creates session and displays QR
+3. Student scans QR and gets confirmed
+4. Admin views attendance report
+Include example API requests/responses for each step.
+
+---
+
+## 7. README.md
+Write a complete README with:
+- Project overview
+- Architecture diagram (text-based)
+- Prerequisites (Python 3.12, Node 18+, PostgreSQL, uv)
+- Step-by-step setup for both backend and frontend
+- All uv and npm commands
+- How to run seed data
+- API endpoint reference table
+- How to open erd.html
+- Testing checklist:
+  ✅ Admin can create session
+  ✅ QR generates and displays
+  ✅ Student scans and attendance recorded
+  ✅ Duplicate scan rejected
+  ✅ Expired QR rejected
+  ✅ Report shows correct data
+
+---
+
+## 8. IMPORTANT RULES
+- Every model must have `__str__`, `Meta.verbose_name`, and proper indexes
+- All ForeignKeys use `on_delete=models.CASCADE` unless noted
+- CORS must be configured so React (port 5173) can talk to Django (port 8000)
+- The seed command must be idempotent (safe to run multiple times)
+- The frontend StudentScan page must work on mobile
+- Do NOT use Django templates — pure API + React SPA
+- Test the attendance flow end-to-end before finishing

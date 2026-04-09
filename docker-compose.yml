@@ -1,0 +1,52 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: ${DB_NAME:-attendance_db}
+      POSTGRES_USER: ${DB_USER:-postgres}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - app_network
+
+  backend:
+    build: ./backend
+    restart: always
+    environment:
+      - DEBUG=False
+      - DB_HOST=db
+      - DB_NAME=${DB_NAME:-attendance_db}
+      - DB_USER=${DB_USER:-postgres}
+      - DB_PASSWORD=${DB_PASSWORD:-postgres}
+      - DB_PORT=5432
+      - SECRET_KEY=${SECRET_KEY:-fallback-secret-key-change-in-production}
+      - ALLOWED_HOSTS=*
+    depends_on:
+      - db
+    volumes:
+      - static_volume:/app/staticfiles
+    networks:
+      - app_network
+
+  frontend:
+    build: ./frontend
+    restart: always
+    ports:
+      - "8080:80"
+    depends_on:
+      - backend
+    volumes:
+      - static_volume:/app/staticfiles:ro
+    networks:
+      - app_network
+
+volumes:
+  postgres_data:
+  static_volume:
+
+networks:
+  app_network:
