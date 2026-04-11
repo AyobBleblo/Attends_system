@@ -77,18 +77,30 @@ class Attendance(models.Model):
     student = models.ForeignKey(
         Student, on_delete=models.CASCADE, related_name='attendances'
     )
+    # Added fields to natively support the DB uniqueness constraint on (student, course, date)
+    course = models.ForeignKey(
+        Course, on_delete=models.CASCADE, related_name='attendance_records', null=True, blank=True
+    )
+    date = models.DateField(auto_now_add=True, null=True, blank=True)
+    
     scanned_at = models.DateTimeField(auto_now_add=True)
     status = models.CharField(
         max_length=10, choices=STATUS_CHOICES, default='present'
     )
 
     class Meta:
-        unique_together = ('session', 'student')
+        unique_together = ('student', 'course', 'date')
         verbose_name = 'Attendance'
         verbose_name_plural = 'Attendance Records'
         indexes = [
             models.Index(fields=['session', 'student']),
+            models.Index(fields=['student', 'course', 'date']),
         ]
+
+    def save(self, *args, **kwargs):
+        if not self.course_id and self.session_id:
+            self.course = self.session.course
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.student.name} — {self.session} [{self.status}]"

@@ -53,7 +53,7 @@ def record_attendance(student_id: str, qr_token: str) -> dict:
             session=session, student=student, status='present'
         )
     except IntegrityError:
-        return {'success': False, 'error': 'Attendance already recorded for this session.'}
+        return {'success': False, 'error': 'You have already registered your attendance for this lecture.'}
 
     return {
         'success': True,

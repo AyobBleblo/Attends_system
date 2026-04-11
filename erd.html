@@ -530,6 +530,8 @@ erDiagram
         int id PK
         int session_id FK
         int student_id FK
+        int course_id FK
+        date date
         datetime scanned_at
         string status
     }
@@ -682,9 +684,11 @@ erDiagram
                     <li>id <span class="field-type">PK, BigAutoField</span></li>
                     <li>session <span class="field-type">FK → Session</span></li>
                     <li>student <span class="field-type">FK → Student</span></li>
+                    <li>course <span class="field-type">FK → Course</span></li>
+                    <li>date <span class="field-type">DateField, auto</span></li>
                     <li>scanned_at <span class="field-type">DateTimeField, auto</span></li>
                     <li>status <span class="field-type">CharField (present/late/absent)</span></li>
-                    <li><em>unique_together: (session, student)</em></li>
+                    <li><em>unique_together: (student, course, date)</em></li>
                 </ul>
             </div>
         </div>
