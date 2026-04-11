@@ -2,6 +2,7 @@ import base64
 import io
 import qrcode
 import csv
+from django.db.models.functions import TruncDate
 from django.http import HttpResponse
 from rest_framework.views import APIView
 from rest_framework import viewsets
@@ -192,13 +193,14 @@ class StudentCoursesView(APIView):
             course = enrollment.course
             total_sessions = Session.objects.filter(
                 course=course, semester=semester
-            ).count()
+            ).annotate(lecture_date=TruncDate('date_time')).values('lecture_date').distinct().count()
+            
             attended_count = Attendance.objects.filter(
                 student=student,
                 session__course=course,
                 session__semester=semester,
                 status='present'
-            ).count()
+            ).annotate(lecture_date=TruncDate('session__date_time')).values('lecture_date').distinct().count()
 
             course_info = CourseSerializer(course).data
             course_info['attended_count'] = attended_count
@@ -238,7 +240,10 @@ class CourseExportView(APIView):
                     return Response({'error': 'Not authorized.'}, status=403)
 
             # Gather data
-            sessions = Session.objects.filter(course=course, semester=semester).order_by('date_time')
+            lecture_dates = Session.objects.filter(
+                course=course, semester=semester
+            ).annotate(lecture_date=TruncDate('date_time')).values_list('lecture_date', flat=True).distinct().order_by('lecture_date')
+            
             enrollments = Enrollment.objects.filter(course=course, semester=semester).select_related('student')
             students = [e.student for e in enrollments]
 
@@ -252,34 +257,37 @@ class CourseExportView(APIView):
             
             # Header Row
             header = ['Student ID', 'Student Name']
-            for s in sessions:
-                header.append(s.date_time.strftime('%Y-%m-%d %H:%M'))
+            for d in lecture_dates:
+                header.append(d.strftime('%Y-%m-%d'))
             header.append('Total Attended')
             header.append('Attendance %')
             writer.writerow(header)
             
-            # Pre-fetch attendance mapped by student and session
-            attendances = Attendance.objects.filter(session__in=sessions).select_related('student', 'session')
+            # Pre-fetch attendance mapped by student and distinct lecture date
+            attendances = Attendance.objects.filter(
+                session__course=course, session__semester=semester, student__in=students, status='present'
+            ).annotate(lecture_date=TruncDate('session__date_time'))
+            
             attn_dict = {}
             for a in attendances:
-                attn_dict[(a.student.id, a.session.id)] = True
+                attn_dict[(a.student.id, a.lecture_date)] = True
                 
-            total_sessions = sessions.count()
+            total_lectures = len(lecture_dates)
 
             # Data Rows
             for student in students:
                 row = [student.student_id, student.name]
                 attended_count = 0
-                for s in sessions:
-                    if (student.id, s.id) in attn_dict:
+                for d in lecture_dates:
+                    if (student.id, d) in attn_dict:
                         row.append('Present')
                         attended_count += 1
                     else:
                         row.append('Absent')
                 
                 row.append(attended_count)
-                if total_sessions > 0:
-                    row.append(f"{(attended_count / total_sessions) * 100:.1f}%")
+                if total_lectures > 0:
+                    row.append(f"{(attended_count / total_lectures) * 100:.1f}%")
                 else:
                     row.append("0%")
                 
