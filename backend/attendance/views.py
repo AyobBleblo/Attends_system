@@ -102,14 +102,17 @@ class AttendanceScanView(APIView):
     def post(self, request):
         student_id = request.data.get('student_id')
         qr_token = request.data.get('qr_token')
-        
+
         if not student_id or not qr_token:
-            return Response({'error': 'student_id and qr_token are required'}, status=status.HTTP_400_BAD_REQUEST)
-            
+            return Response(
+                {'error': 'student_id and qr_token are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
         result = record_attendance(student_id, qr_token)
-        
+
         if result['success']:
-            return Response(result)
+            return Response(result, status=status.HTTP_200_OK)
         else:
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
 
@@ -118,7 +121,9 @@ class SessionAttendanceListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request, session_id):
-        attendances = Attendance.objects.filter(session_id=session_id).select_related('student', 'session__course')
+        attendances = Attendance.objects.filter(
+            session_id=session_id
+        ).select_related('student', 'session__course')
         serializer = AttendanceSerializer(attendances, many=True)
         return Response(serializer.data)
 
@@ -130,24 +135,25 @@ class AttendanceReportView(APIView):
         course_id = request.GET.get('course_id')
         semester_id = request.GET.get('semester_id')
         professor_id = request.GET.get('professor_id')
-        
+
         queryset = Attendance.objects.select_related('student', 'session__course').all()
-        
+
         if course_id:
             queryset = queryset.filter(session__course_id=course_id)
         if semester_id:
             queryset = queryset.filter(session__semester_id=semester_id)
         if professor_id:
             queryset = queryset.filter(session__professor_id=professor_id)
-            
+
         serializer = AttendanceSerializer(queryset, many=True)
-        
-        # Calculate summary
+
         total_present = queryset.filter(status='present').count()
         total_enrollments = 0
         if course_id and semester_id:
-            total_enrollments = Enrollment.objects.filter(course_id=course_id, semester_id=semester_id).count()
-            
+            total_enrollments = Enrollment.objects.filter(
+                course_id=course_id, semester_id=semester_id
+            ).count()
+
         return Response({
             'results': serializer.data,
             'summary': {
@@ -159,7 +165,8 @@ class AttendanceReportView(APIView):
 
 
 class StudentCoursesView(APIView):
-    """Returns courses a student is enrolled in for the active semester."""
+    """Returns courses a student is enrolled in for the active semester,
+    including per-course attendance stats (attended_count / total_sessions)."""
     permission_classes = [AllowAny]
 
     def get(self, request, student_id):
@@ -180,13 +187,34 @@ class StudentCoursesView(APIView):
             student=student, semester=semester
         ).select_related('course', 'course__department')
 
-        courses = [e.course for e in enrollments]
-        serializer = CourseSerializer(courses, many=True)
+        courses_data = []
+        for enrollment in enrollments:
+            course = enrollment.course
+            total_sessions = Session.objects.filter(
+                course=course, semester=semester
+            ).count()
+            attended_count = Attendance.objects.filter(
+                student=student,
+                session__course=course,
+                session__semester=semester,
+                status='present'
+            ).count()
+
+            course_info = CourseSerializer(course).data
+            course_info['attended_count'] = attended_count
+            course_info['total_sessions'] = total_sessions
+            course_info['attendance_pct'] = (
+                round((attended_count / total_sessions) * 100)
+                if total_sessions > 0 else 0
+            )
+            courses_data.append(course_info)
+
         return Response({
             'student_id': student.student_id,
             'name': student.name,
+            'department': student.department.name,
             'semester': semester.name,
-            'courses': serializer.data,
+            'courses': courses_data,
         })
 
 

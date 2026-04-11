@@ -36,7 +36,8 @@ services:
     build: ./frontend
     restart: always
     ports:
-      - "8080:80"
+      - "8080:80"    # HTTP  → nginx redirects to HTTPS automatically
+      - "443:443"    # HTTPS → camera / getUserMedia works on any device
     depends_on:
       - backend
     volumes:

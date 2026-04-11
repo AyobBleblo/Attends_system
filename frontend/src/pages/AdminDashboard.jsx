@@ -1,6 +1,15 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import { Users, GraduationCap, BookOpen, UserPlus, X, Link2, ClipboardList, Trash2, RefreshCw } from 'lucide-react';
+import { Dialog } from '@headlessui/react';
+import api from '../api/axios';
+import {
+  Users, GraduationCap, BookOpen, Link2, ClipboardList,
+  UserPlus, RefreshCw, X, Loader2,
+} from 'lucide-react';
+import StatsBar from '../components/admin/StatsBar';
+import DataTable from '../components/admin/DataTable';
+import NestedAssignModal from '../components/admin/NestedAssignModal';
 
+// ── Tab config ────────────────────────────────────────────────────────────────
 const TABS = [
   { key: 'students',    label: 'Students',    icon: Users },
   { key: 'professors',  label: 'Professors',  icon: GraduationCap },
@@ -9,250 +18,374 @@ const TABS = [
   { key: 'enrollments', label: 'Enrollments', icon: ClipboardList },
 ];
 
+const EP = {
+  students:    'admin/students/',
+  professors:  'admin/professors/',
+  courses:     'admin/courses/',
+  assignments: 'admin/assignments/',
+  enrollments: 'admin/enrollments/',
+};
+
+// ── Column definitions per tab ────────────────────────────────────────────────
+const COLUMNS = {
+  students: [
+    { key: 'student_id',      label: 'ID' },
+    { key: 'name',            label: 'Name' },
+    { key: 'department_name', label: 'Department' },
+  ],
+  professors: [
+    { key: 'professor_id',    label: 'ID' },
+    { key: 'name',            label: 'Name' },
+    { key: 'department_name', label: 'Department' },
+  ],
+  courses: [
+    { key: 'code',            label: 'Code' },
+    { key: 'name',            label: 'Name' },
+    { key: 'department_name', label: 'Department' },
+  ],
+  assignments: [
+    { key: 'professor_name',  label: 'Professor' },
+    { key: 'course_code',     label: 'Course Code' },
+    { key: 'course_name',     label: 'Course Name' },
+    { key: 'semester_name',   label: 'Semester' },
+  ],
+  enrollments: [
+    {
+      key: 'student',
+      label: 'Student',
+      render: item => item.student_name || item.student_id || item.student,
+    },
+    {
+      key: 'course',
+      label: 'Course',
+      render: item => item.course_code || item.course,
+    },
+    {
+      key: 'semester',
+      label: 'Semester',
+      render: item => item.semester_name || item.semester,
+    },
+  ],
+};
+
+// ── Utility ───────────────────────────────────────────────────────────────────
+// We now use the 'api' instance from ../api/axios which has the interceptor
+// but we'll add a helper to format errors cleanly.
+const formatError = (err) => {
+  if (err.response?.data) {
+    const data = err.response.data;
+    if (typeof data === 'object') {
+      return Object.entries(data)
+        .map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(' ') : v}`)
+        .join(', ');
+    }
+    return data;
+  }
+  return err.message;
+};
+
+// ── Add-New modal form per tab ────────────────────────────────────────────────
+const Inp = ({ label, name, type = 'text', value, onChange, required = true }) => (
+  <div>
+    <label className="form-label">{label}</label>
+    <input type={type} name={name} value={value} onChange={onChange} required={required} className="input" />
+  </div>
+);
+
+const Sel = ({ label, name, options, valKey = 'id', lblFn, value, onChange }) => (
+  <div>
+    <label className="form-label">{label}</label>
+    <select name={name} value={value} onChange={onChange} required className="input">
+      <option value="">— Select —</option>
+      {options.map(o => <option key={o[valKey]} value={o[valKey]}>{lblFn(o)}</option>)}
+    </select>
+  </div>
+);
+
+// ── Main Component ────────────────────────────────────────────────────────────
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('students');
   const [data, setData] = useState({ students: [], professors: [], courses: [], assignments: [], enrollments: [] });
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
-  const [isModalOpen, setIsModalOpen] = useState(false);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [counts, setCounts] = useState({});
+  const [showModal, setShowModal] = useState(false);
+  const [showNestedModal, setShowNestedModal] = useState(false);
   const [formData, setFormData] = useState({});
+  const [formError, setFormError] = useState(null);
+  const [formLoading, setFormLoading] = useState(false);
 
-  // Secondary data for relation dropdowns
-  const [allStudents, setAllStudents] = useState([]);
+  // Relation data for dropdowns
+  const [allStudents,   setAllStudents]   = useState([]);
   const [allProfessors, setAllProfessors] = useState([]);
-  const [allCourses, setAllCourses] = useState([]);
-  const [allSemesters, setAllSemesters] = useState([]);
+  const [allCourses,    setAllCourses]    = useState([]);
+  const [allSemesters,  setAllSemesters]  = useState([]);
+  const [allDepartments, setAllDepartments] = useState([]);
 
-  const token = () => localStorage.getItem('access_token');
-  const authHeader = { Authorization: `Bearer ${token()}` };
-
-  const EP = {
-    students:    'accounts/admin/students/',
-    professors:  'accounts/admin/professors/',
-    courses:     'courses/admin/courses/',
-    assignments: 'courses/admin/assignments/',
-    enrollments: 'admin/enrollments/',
-  };
-
+  // ── Fetch table data ────────────────────────────────────────────────────────
   const fetchData = useCallback(async (tab) => {
     setLoading(true);
-    setError(null);
     try {
-      const res = await fetch(`/api/${EP[tab]}`, { headers: authHeader });
-      if (!res.ok) throw new Error(`Failed to load ${tab}`);
-      const result = await res.json();
-      setData(prev => ({ ...prev, [tab]: result }));
-    } catch (err) { setError(err.message); }
+      const res = await api.get(EP[tab]);
+      setData(prev => ({ ...prev, [tab]: res.data }));
+    } catch (e) {
+      console.error(e);
+      // If unauthorized, the interceptor might handle it, but we log it here
+    }
     finally { setLoading(false); }
   }, []);
 
-  // Load dropdown data for forms
-  const loadRelations = useCallback(async () => {
-    const load = async (url) => {
-      const r = await fetch(`/api/${url}`, { headers: authHeader });
-      return r.ok ? r.json() : [];
-    };
-    const [st, pr, co] = await Promise.all([
-      load('accounts/admin/students/'),
-      load('accounts/admin/professors/'),
-      load('courses/admin/courses/'),
-    ]);
-    setAllStudents(st);
-    setAllProfessors(pr);
-    setAllCourses(co);
+  // ── Fetch stats ─────────────────────────────────────────────────────────────
+  const fetchStats = useCallback(async () => {
+    setStatsLoading(true);
+    try {
+      const [studentsRes, professorsRes, coursesRes, enrollmentsRes] = await Promise.all([
+        api.get(EP.students),
+        api.get(EP.professors),
+        api.get(EP.courses),
+        api.get(EP.enrollments),
+      ]);
+      setCounts({
+        students:    studentsRes.data.length,
+        professors:  professorsRes.data.length,
+        courses:     coursesRes.data.length,
+        enrollments: enrollmentsRes.data.length,
+      });
+    } catch (e) { console.error(e); }
+    finally { setStatsLoading(false); }
   }, []);
 
-  useEffect(() => { fetchData(activeTab); }, [activeTab]);
+  // ── Load relations for dropdowns ────────────────────────────────────────────
+  const loadRelations = useCallback(async () => {
+    try {
+      const [st, pr, co, sem, dept] = await Promise.all([
+        api.get(EP.students).catch(() => ({ data: [] })),
+        api.get(EP.professors).catch(() => ({ data: [] })),
+        api.get(EP.courses).catch(() => ({ data: [] })),
+        api.get('semesters/').catch(() => ({ data: [] })),
+        api.get('departments/').catch(() => ({ data: [] })),
+      ]);
+      setAllStudents(st.data);
+      setAllProfessors(pr.data);
+      setAllCourses(co.data);
+      setAllSemesters(sem.data);
+      setAllDepartments(dept.data);
+    } catch (e) { console.error(e); }
+  }, []);
+
+  useEffect(() => { fetchData(activeTab); fetchStats(); }, [activeTab]);
   useEffect(() => {
     if (['assignments', 'enrollments'].includes(activeTab)) loadRelations();
-    if (activeTab === 'assignments') {
-      // Also load semesters
-      fetch('/api/semesters/', { headers: authHeader })
-        .then(r => r.ok ? r.json() : [])
-        .then(setAllSemesters)
-        .catch(() => {});
-    }
   }, [activeTab]);
 
+  // ── Optimistic delete ───────────────────────────────────────────────────────
+  const handleDelete = async (id) => {
+    if (!window.confirm('Delete this record?')) return;
+    const prev = data[activeTab];
+    setData(d => ({ ...d, [activeTab]: d[activeTab].filter(i => i.id !== id) }));
+    try {
+      await api.delete(`${EP[activeTab]}${id}/`);
+      fetchStats();
+    } catch (err) {
+      setData(d => ({ ...d, [activeTab]: prev }));
+      alert(`Failed to delete: ${formatError(err)}`);
+    }
+  };
+
+  // ── Create ──────────────────────────────────────────────────────────────────
   const handleCreate = async (e) => {
     e.preventDefault();
-    const payload = activeTab === 'students' || activeTab === 'professors'
-      ? { ...formData, department: 1 }
-      : { ...formData };
-
+    setFormLoading(true);
+    setFormError(null);
     try {
-      const res = await fetch(`/api/${EP[activeTab]}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', ...authHeader },
-        body: JSON.stringify(payload),
-      });
-      const body = await res.json();
-      if (!res.ok) throw new Error(JSON.stringify(body));
-      setIsModalOpen(false);
+      await api.post(EP[activeTab], formData);
+      setShowModal(false);
       setFormData({});
       fetchData(activeTab);
-    } catch (err) { alert('Error: ' + err.message); }
+      fetchStats();
+    } catch (err) {
+      setFormError(formatError(err));
+    }
+    finally { setFormLoading(false); }
   };
 
-  const handleDelete = async (id) => {
-    if (!window.confirm('Are you sure you want to delete this item?')) return;
-    try {
-      const res = await fetch(`/api/${EP[activeTab]}${id}/`, {
-        method: 'DELETE',
-        headers: authHeader,
-      });
-      if (!res.ok && res.status !== 204) throw new Error('Failed to delete');
-      fetchData(activeTab);
-    } catch (err) { alert('Error: ' + err.message); }
-  };
+  const change = e => setFormData(f => ({ ...f, [e.target.name]: e.target.value }));
 
-  // ── Render table columns per tab ──
-  const renderHeader = () => {
-    if (activeTab === 'students')    return <><th>Student ID</th><th>Name</th><th>Department</th><th></th></>;
-    if (activeTab === 'professors')  return <><th>Professor ID</th><th>Name</th><th>Department</th><th></th></>;
-    if (activeTab === 'courses')     return <><th>Code</th><th>Name</th><th></th></>;
-    if (activeTab === 'assignments') return <><th>Professor</th><th>Course</th><th>Semester</th><th></th></>;
-    if (activeTab === 'enrollments') return <><th>Student</th><th>Course</th><th>Semester</th><th></th></>;
-  };
-
-  const renderRow = (item) => {
-    const del = <td><button className="btn" onClick={() => handleDelete(item.id)} style={{ padding: '0.2rem 0.5rem', color: '#ef4444', background: 'transparent' }}><Trash2 size={16}/></button></td>;
-    if (activeTab === 'students')    return <><td>{item.student_id}</td><td>{item.name}</td><td>{item.department_name}</td>{del}</>;
-    if (activeTab === 'professors')  return <><td>{item.professor_id}</td><td>{item.name}</td><td>{item.department_name}</td>{del}</>;
-    if (activeTab === 'courses')     return <><td>{item.code}</td><td>{item.name}</td>{del}</>;
-    if (activeTab === 'assignments') return <><td>{item.professor_name}</td><td>{item.course_name} ({item.course_code})</td><td>{item.semester_name}</td>{del}</>;
-    if (activeTab === 'enrollments') return <><td>{item.student_id || item.student}</td><td>{item.course_code || item.course}</td><td>{item.semester}</td>{del}</>;
-  };
-
-  // ── Modal form per tab ──
   const renderForm = () => {
-    const inp = (label, name, type='text', req=true) => (
-      <div className="form-group" key={name}>
-        <label style={{ display: 'block', marginBottom: '0.35rem', fontWeight: 600, fontSize: '0.85rem' }}>{label}</label>
-        <input type={type} name={name} className="input" onChange={e => setFormData(p => ({...p, [name]: e.target.value}))} required={req} />
-      </div>
-    );
-    const sel = (label, name, options, valKey='id', lblFn) => (
-      <div className="form-group" key={name}>
-        <label style={{ display: 'block', marginBottom: '0.35rem', fontWeight: 600, fontSize: '0.85rem' }}>{label}</label>
-        <select name={name} className="input" onChange={e => setFormData(p => ({...p, [name]: e.target.value}))} required>
-          <option value="">-- Select --</option>
-          {options.map(o => <option key={o[valKey]} value={o[valKey]}>{lblFn(o)}</option>)}
-        </select>
-      </div>
-    );
-
-    if (activeTab === 'students') return <>{inp('Username', 'username')}{inp('Password', 'password', 'password')}{inp('Full Name', 'name')}{inp('Student ID', 'student_id')}</>;
-    if (activeTab === 'professors') return <>{inp('Username', 'username')}{inp('Password', 'password', 'password')}{inp('Full Name', 'name')}{inp('Professor ID', 'professor_id')}</>;
-    if (activeTab === 'courses') return <>{inp('Course Code', 'code')}{inp('Course Name', 'name')}</>;
-    if (activeTab === 'assignments') return <>
-      {sel('Professor', 'professor', allProfessors, 'id', p => `${p.name} (${p.professor_id})`)}
-      {sel('Course', 'course', allCourses, 'id', c => `${c.name} (${c.code})`)}
-      {allSemesters.length > 0 ? sel('Semester', 'semester', allSemesters, 'id', s => s.name) : inp('Semester ID', 'semester')}
-    </>;
-    if (activeTab === 'enrollments') return <>
-      {sel('Student', 'student', allStudents, 'id', s => `${s.name} (${s.student_id})`)}
-      {sel('Course', 'course', allCourses, 'id', c => `${c.name} (${c.code})`)}
-      {inp('Semester ID', 'semester')}
-    </>;
+    switch (activeTab) {
+      case 'students':
+        return (
+          <>
+            <Inp label="Username" name="username" value={formData.username||''} onChange={change} />
+            <Inp label="Password" name="password" type="password" value={formData.password||''} onChange={change} />
+            <Inp label="Full Name" name="name" value={formData.name||''} onChange={change} />
+            <Inp label="Student ID" name="student_id" value={formData.student_id||''} onChange={change} />
+            <Sel label="Department" name="department" options={allDepartments} valKey="id" lblFn={d => d.name} value={formData.department||''} onChange={change} />
+          </>
+        );
+      case 'professors':
+        return (
+          <>
+            <Inp label="Username" name="username" value={formData.username||''} onChange={change} />
+            <Inp label="Password" name="password" type="password" value={formData.password||''} onChange={change} />
+            <Inp label="Full Name" name="name" value={formData.name||''} onChange={change} />
+            <Inp label="Professor ID" name="professor_id" value={formData.professor_id||''} onChange={change} />
+            <Sel label="Department" name="department" options={allDepartments} valKey="id" lblFn={d => d.name} value={formData.department||''} onChange={change} />
+          </>
+        );
+      case 'courses':
+        return (
+          <>
+            <Inp label="Course Code" name="code" value={formData.code||''} onChange={change} />
+            <Inp label="Course Name" name="name" value={formData.name||''} onChange={change} />
+            <Sel label="Department" name="department"
+              options={allDepartments}
+              valKey="id" lblFn={d => d.name} value={formData.department||''} onChange={change}
+            />
+          </>
+        );
+      case 'enrollments':
+        return (
+          <>
+            <Sel label="Student" name="student" options={allStudents} valKey="id"
+              lblFn={s => `${s.name} (${s.student_id})`} value={formData.student||''} onChange={change} />
+            <Sel label="Course" name="course" options={allCourses} valKey="id"
+              lblFn={c => `${c.name} (${c.code})`} value={formData.course||''} onChange={change} />
+            <Sel label="Semester" name="semester" options={allSemesters} valKey="id"
+              lblFn={s => s.name} value={formData.semester||''} onChange={change} />
+          </>
+        );
+      default:
+        return null;
+    }
   };
 
-  const tabColors = { students: '#6366f1', professors: '#8b5cf6', courses: '#0ea5e9', assignments: '#f59e0b', enrollments: '#10b981' };
+  const TAB_COLORS = {
+    students: 'bg-indigo-500', professors: 'bg-violet-500',
+    courses: 'bg-sky-500', assignments: 'bg-amber-500', enrollments: 'bg-emerald-500',
+  };
 
   return (
-    <div className="dashboard-container fade-in">
-      <header className="dashboard-header">
-        <h1>Admin Dashboard</h1>
-        <p className="text-muted">Manage users, courses, assignments, and enrollments.</p>
-      </header>
+    <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+      {/* ── Header ── */}
+      <div className="mb-8">
+        <h1 className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
+          Admin Dashboard
+        </h1>
+        <p className="text-slate-500 dark:text-slate-400 mt-1">
+          Manage users, courses, assignments, and enrollments.
+        </p>
+      </div>
 
-      {error && <div style={{ background: '#fde8e8', color: '#9b1c1c', padding: '0.75rem 1rem', borderRadius: '8px', marginBottom: '1rem', border: '1px solid #f98080' }}>{error}</div>}
+      {/* ── Stats Bar ── */}
+      <StatsBar counts={counts} loading={statsLoading} />
 
-      {/* Tabs */}
-      <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '2rem', flexWrap: 'wrap' }}>
+      {/* ── Tabs ── */}
+      <div className="flex gap-2 flex-wrap mb-6">
         {TABS.map(({ key, label, icon: Icon }) => (
           <button
             key={key}
             onClick={() => setActiveTab(key)}
-            className="btn"
-            style={{
-              display: 'flex', alignItems: 'center', gap: '0.4rem',
-              background: activeTab === key ? tabColors[key] : 'transparent',
-              color: activeTab === key ? '#fff' : 'var(--text-main)',
-              border: `1px solid ${activeTab === key ? tabColors[key] : 'var(--border)'}`,
-              fontWeight: activeTab === key ? 700 : 400,
-              transition: 'all 0.2s',
-            }}
+            className={`
+              inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold
+              transition-all duration-150 border
+              ${activeTab === key
+                ? `${TAB_COLORS[key]} text-white border-transparent shadow-md`
+                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-300'}
+            `}
           >
-            <Icon size={16} /> {label}
+            <Icon size={15} /> {label}
           </button>
         ))}
       </div>
 
-      {/* Content */}
-      <div className="card p-4">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-          <h3 style={{ margin: 0 }}>{TABS.find(t => t.key === activeTab)?.label}</h3>
-          <div style={{ display: 'flex', gap: '0.75rem' }}>
-            <button className="btn" onClick={() => fetchData(activeTab)} style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', border: '1px solid var(--border)', background: 'transparent' }}>
+      {/* ── Content card ── */}
+      <div className="card p-5">
+        {/* Card header */}
+        <div className="flex justify-between items-center mb-5 flex-wrap gap-3">
+          <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+            {TABS.find(t => t.key === activeTab)?.label}
+          </h2>
+          <div className="flex gap-2">
+            <button
+              onClick={() => fetchData(activeTab)}
+              className="btn-ghost"
+            >
               <RefreshCw size={15} /> Refresh
             </button>
-            <button
-              className="btn"
-              onClick={() => { setFormData({}); setIsModalOpen(true); if (['assignments', 'enrollments'].includes(activeTab)) loadRelations(); }}
-              style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', background: tabColors[activeTab], color: '#fff', border: 'none' }}
-            >
-              <UserPlus size={16} /> Add New
-            </button>
+            {activeTab === 'assignments' ? (
+              <button
+                onClick={() => { loadRelations(); setShowNestedModal(true); }}
+                className="btn-primary"
+              >
+                <UserPlus size={15} /> Smart Assign
+              </button>
+            ) : activeTab !== 'assignments' && (
+              <button
+                onClick={() => { setFormData({}); setFormError(null); loadRelations(); setShowModal(true); }}
+                className="btn-primary"
+              >
+                <UserPlus size={15} /> Add New
+              </button>
+            )}
           </div>
         </div>
 
-        {loading ? (
-          <p className="text-muted">Loading...</p>
-        ) : (
-          <div style={{ overflowX: 'auto' }}>
-            <table style={{ width: '100%', textAlign: 'left', borderCollapse: 'collapse' }}>
-              <thead>
-                <tr style={{ borderBottom: '2px solid var(--border)' }}>
-                  {React.Children.map(renderHeader(), (th, i) =>
-                    <th key={i} style={{ padding: '0.6rem 0.75rem', fontSize: '0.85rem', fontWeight: 700, color: 'var(--text-muted)' }}>{th.props.children}</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody>
-                {data[activeTab].length === 0 && (
-                  <tr><td colSpan={5} style={{ padding: '2rem', textAlign: 'center', color: 'var(--text-muted)' }}>No {activeTab} found.</td></tr>
-                )}
-                {data[activeTab].map(item => (
-                  <tr key={item.id} style={{ borderBottom: '1px solid var(--border)' }}>
-                    {React.Children.map(renderRow(item), (td, i) =>
-                      <td key={i} style={{ padding: '0.6rem 0.75rem' }}>{td.props.children}</td>
-                    )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        {/* Table */}
+        <DataTable
+          columns={COLUMNS[activeTab]}
+          data={data[activeTab]}
+          loading={loading}
+          onDelete={handleDelete}
+          emptyText={`No ${activeTab} found.`}
+        />
       </div>
 
-      {/* Modal */}
-      {isModalOpen && (
-        <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div className="card" style={{ width: '440px', maxHeight: '90vh', overflowY: 'auto', background: 'var(--card-bg)', padding: '2rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1.5rem' }}>
-              <h3 style={{ margin: 0 }}>Add New {TABS.find(t => t.key === activeTab)?.label.slice(0, -1)}</h3>
-              <button className="btn" onClick={() => setIsModalOpen(false)} style={{ padding: '0.3rem' }}><X size={20}/></button>
+      {/* ── Generic Add Modal ── */}
+      <Dialog open={showModal} onClose={() => setShowModal(false)} className="relative z-50">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          <Dialog.Panel className="card w-full max-w-md p-6 animate-scale-in dark:bg-slate-900">
+            <div className="flex items-center justify-between mb-5">
+              <Dialog.Title className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                Add {TABS.find(t => t.key === activeTab)?.label.slice(0, -1)}
+              </Dialog.Title>
+              <button onClick={() => setShowModal(false)} className="btn-ghost p-1.5">
+                <X size={18} />
+              </button>
             </div>
-            <form onSubmit={handleCreate} style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+
+            <form onSubmit={handleCreate} className="space-y-4">
               {renderForm()}
-              <button type="submit" className="btn" style={{ background: tabColors[activeTab], color: '#fff', border: 'none', marginTop: '0.5rem' }}>
-                Create
+              {formError && (
+                <p className="text-xs text-red-600 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2 animate-slide-down">
+                  {formError}
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={formLoading}
+                className={`btn-primary w-full justify-center ${TAB_COLORS[activeTab]}`}
+              >
+                {formLoading ? <Loader2 size={16} className="animate-spin" /> : null}
+                {formLoading ? 'Creating…' : 'Create'}
               </button>
             </form>
-          </div>
+          </Dialog.Panel>
         </div>
-      )}
+      </Dialog>
+
+      {/* ── Nested Assign Wizard ── */}
+      <NestedAssignModal
+        isOpen={showNestedModal}
+        onClose={() => setShowNestedModal(false)}
+        semesters={allSemesters}
+        onSuccess={() => {
+          setShowNestedModal(false);
+          fetchData('assignments');
+          fetchStats();
+        }}
+      />
     </div>
   );
 };

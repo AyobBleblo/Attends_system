@@ -3,11 +3,11 @@
     {
       "id": "grp_frontend",
       "type": "group",
-      "label": "🖥️ Frontend — React 18 + Vite",
+      "label": "🖥️ Frontend — React 18 + Vite + Tailwind CSS",
       "x": -1540,
       "y": -320,
-      "width": 1100,
-      "height": 1020,
+      "width": 1200,
+      "height": 1200,
       "color": "3"
     },
     {
@@ -17,7 +17,7 @@
       "x": -320,
       "y": -320,
       "width": 1340,
-      "height": 1020,
+      "height": 1200,
       "color": "1"
     },
     {
@@ -35,8 +35,8 @@
       "type": "group",
       "label": "🐳 Infrastructure — Docker + Nginx",
       "x": -1540,
-      "y": 740,
-      "width": 1100,
+      "y": 920,
+      "width": 1200,
       "height": 550,
       "color": "5"
     },
@@ -45,7 +45,7 @@
       "type": "group",
       "label": "🚫 Git Ignored / Dev Env",
       "x": -320,
-      "y": 740,
+      "y": 920,
       "width": 1340,
       "height": 550,
       "color": "6"
@@ -64,11 +64,21 @@
     {
       "id": "node_app_jsx",
       "type": "text",
-      "text": "## App.jsx\n**type:** ui\n**path:** `frontend/src/App.jsx`\n\nRoot router and role-based guards.",
+      "text": "## App.jsx\n**type:** ui\n**path:** `frontend/src/App.jsx`\n\nRoot router, role-based guards, responsive Tailwind navbar (mobile hamburger).",
       "x": -1490,
       "y": -110,
       "width": 280,
-      "height": 150,
+      "height": 160,
+      "color": "3"
+    },
+    {
+      "id": "node_tailwind",
+      "type": "text",
+      "text": "## Tailwind CSS v3\n**type:** styling\n**files:** `tailwind.config.js`, `postcss.config.js`\n\nMobile-first design system. Custom brand purple + gold palette, animations: scan-line, shake, slide-down, shimmer, bounce-once.",
+      "x": -1490,
+      "y": 80,
+      "width": 280,
+      "height": 180,
       "color": "3"
     },
     {
@@ -79,6 +89,46 @@
       "y": 80,
       "width": 280,
       "height": 150,
+      "color": "3"
+    },
+    {
+      "id": "node_custom_admin",
+      "type": "text",
+      "text": "## 🛡️ AdminDashboard.jsx\n**type:** ui — CUSTOM ADMIN\n**path:** `frontend/src/pages/AdminDashboard.jsx`\n\nFull custom admin UI replacing Django Admin as primary interface.\n- StatsBar (students/professors/courses/enrollments)\n- DataTable with skeleton rows + optimistic delete\n- NestedAssignModal 3-step wizard\n- Enrollment via dropdown form (student+course+semester)",
+      "x": -1490,
+      "y": 290,
+      "width": 320,
+      "height": 240,
+      "color": "3"
+    },
+    {
+      "id": "node_nested_assign",
+      "type": "text",
+      "text": "## 🔗 NestedAssignModal.jsx\n**type:** ui component\n**path:** `frontend/src/components/admin/NestedAssignModal.jsx`\n\n3-step wizard: Department → Course → Professor.\nUses `POST /api/courses/admin/nested-assign/`.\nBackend uses get_or_create for each entity.",
+      "x": -1150,
+      "y": 290,
+      "width": 280,
+      "height": 210,
+      "color": "3"
+    },
+    {
+      "id": "node_professor_view",
+      "type": "text",
+      "text": "## 👨‍🏫 ProfessorView.jsx\n**type:** ui\n**path:** `frontend/src/pages/ProfessorView.jsx`\n\nBranded gradient header with Arabic greeting.\nLive courses fetch from `/api/accounts/professor/{id}/courses/`.\nCourseCard grid with alternating accent colors + skeleton loaders.",
+      "x": -1490,
+      "y": 560,
+      "width": 280,
+      "height": 210,
+      "color": "3"
+    },
+    {
+      "id": "node_student_scan",
+      "type": "text",
+      "text": "## 📱 StudentScan.jsx\n**type:** ui\n**path:** `frontend/src/pages/StudentScan.jsx`\n\nPersonalized teal gradient header (Arabic greeting).\nEnrolledCourseCard grid with attendance % progress bars.\nScanRing overlay (BarcodeDetector API).\nFull-screen success/fail animation after scan.",
+      "x": -1170,
+      "y": 560,
+      "width": 280,
+      "height": 240,
       "color": "3"
     },
 
@@ -102,6 +152,36 @@
       "height": 150,
       "color": "1"
     },
+    {
+      "id": "node_nested_assign_api",
+      "type": "text",
+      "text": "## 🔗 NestedAssignmentCreateView\n**type:** api view\n**path:** `backend/courses/views.py`\n**endpoint:** `POST /api/courses/admin/nested-assign/`\n\nAccepts string names/codes.\nUses NestedCourseAssignmentSerializer with get_or_create chain:\nDepartment → Course → Professor → CourseAssignment (atomic transaction).",
+      "x": -270,
+      "y": 60,
+      "width": 320,
+      "height": 230,
+      "color": "1"
+    },
+    {
+      "id": "node_nested_serializer",
+      "type": "text",
+      "text": "## NestedCourseAssignmentSerializer\n**type:** serializer\n**path:** `backend/courses/serializers.py`\n\nResolves/creates Dept → Course → Professor chain.\nFull atomic transaction. Returns assignment summary JSON.",
+      "x": 80,
+      "y": 60,
+      "width": 280,
+      "height": 180,
+      "color": "1"
+    },
+    {
+      "id": "node_student_courses_api",
+      "type": "text",
+      "text": "## StudentCoursesView (enhanced)\n**type:** api view\n**path:** `backend/attendance/views.py`\n**endpoint:** `GET /api/student/{id}/courses/`\n\nNow includes per-course:\n- `attended_count`\n- `total_sessions`\n- `attendance_pct`",
+      "x": -270,
+      "y": 320,
+      "width": 280,
+      "height": 200,
+      "color": "1"
+    },
 
     {
       "id": "node_postgres",
@@ -119,7 +199,7 @@
       "type": "text",
       "text": "## docker-compose.yml\n**type:** config\n\nOrchestrates db, backend, frontend.",
       "x": -1490,
-      "y": 790,
+      "y": 970,
       "width": 290,
       "height": 130,
       "color": "5"
@@ -129,7 +209,7 @@
       "type": "text",
       "text": "## nginx.conf\n**type:** config\n\nReverse proxy / API gateway.",
       "x": -1160,
-      "y": 790,
+      "y": 970,
       "width": 290,
       "height": 130,
       "color": "5"
@@ -139,7 +219,7 @@
       "type": "text",
       "text": "## .gitignore\n**type:** config\n**status:** active\n\nExcludes env files, venv, and node_modules from repository.",
       "x": -830,
-      "y": 790,
+      "y": 970,
       "width": 290,
       "height": 130,
       "color": "5"
@@ -150,7 +230,7 @@
       "type": "text",
       "text": "## node_modules/\n**type:** lib\n**status:** 🚫 IGNORED\n\nFrontend dependencies managed via npm.",
       "x": -270,
-      "y": 790,
+      "y": 970,
       "width": 290,
       "height": 130,
       "color": "6"
@@ -160,7 +240,7 @@
       "type": "text",
       "text": "## .venv/ / venv/\n**type:** lib\n**status:** 🚫 IGNORED\n\nPython virtual environment.",
       "x": 60,
-      "y": 790,
+      "y": 970,
       "width": 290,
       "height": 130,
       "color": "6"
@@ -170,7 +250,7 @@
       "type": "text",
       "text": "## .env\n**type:** config\n**status:** 🚫 IGNORED\n\nContains sensitive credentials (DB passwords, Secret Keys).",
       "x": 390,
-      "y": 790,
+      "y": 970,
       "width": 290,
       "height": 130,
       "color": "6"
@@ -180,7 +260,7 @@
       "type": "text",
       "text": "## __pycache__/\n**type:** internal\n**status:** 🚫 IGNORED\n\nCompiled Python bytecode files.",
       "x": 720,
-      "y": 790,
+      "y": 970,
       "width": 290,
       "height": 130,
       "color": "6"
@@ -210,6 +290,62 @@
       "toNode": "node_env_ignored",
       "toSide": "left",
       "label": "ignores"
+    },
+    {
+      "id": "e_admin_nested_modal",
+      "fromNode": "node_custom_admin",
+      "fromSide": "right",
+      "toNode": "node_nested_assign",
+      "toSide": "left",
+      "label": "opens wizard"
+    },
+    {
+      "id": "e_nested_modal_api",
+      "fromNode": "node_nested_assign",
+      "fromSide": "right",
+      "toNode": "node_nested_assign_api",
+      "toSide": "left",
+      "label": "POST nested-assign"
+    },
+    {
+      "id": "e_nested_api_serializer",
+      "fromNode": "node_nested_assign_api",
+      "fromSide": "right",
+      "toNode": "node_nested_serializer",
+      "toSide": "left",
+      "label": "delegates to"
+    },
+    {
+      "id": "e_nested_serializer_db",
+      "fromNode": "node_nested_serializer",
+      "fromSide": "right",
+      "toNode": "node_postgres",
+      "toSide": "left",
+      "label": "get_or_create (atomic)"
+    },
+    {
+      "id": "e_student_scan_api",
+      "fromNode": "node_student_scan",
+      "fromSide": "right",
+      "toNode": "node_student_courses_api",
+      "toSide": "left",
+      "label": "GET /student/{id}/courses"
+    },
+    {
+      "id": "e_student_courses_db",
+      "fromNode": "node_student_courses_api",
+      "fromSide": "right",
+      "toNode": "node_postgres",
+      "toSide": "left",
+      "label": "queries enrollments + attendance"
+    },
+    {
+      "id": "e_tailwind_admin",
+      "fromNode": "node_tailwind",
+      "fromSide": "right",
+      "toNode": "node_custom_admin",
+      "toSide": "left",
+      "label": "styles"
     }
   ]
 }

@@ -32,6 +32,16 @@ class AdminStudentSerializer(serializers.ModelSerializer):
         model = Student
         fields = ['id', 'student_id', 'name', 'department', 'department_name', 'username', 'password']
 
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("A user with this username already exists.")
+        return value
+
+    def validate_student_id(self, value):
+        if Student.objects.filter(student_id=value).exists():
+            raise serializers.ValidationError("A student with this ID already exists.")
+        return value
+
     def create(self, validated_data):
         username = validated_data.pop('username')
         password = validated_data.pop('password')
@@ -60,6 +70,16 @@ class AdminProfessorSerializer(serializers.ModelSerializer):
     class Meta:
         model = Professor
         fields = ['id', 'professor_id', 'name', 'department', 'department_name', 'username', 'password']
+
+    def validate_username(self, value):
+        if User.objects.filter(username=value).exists():
+            raise serializers.ValidationError("A user with this username already exists.")
+        return value
+
+    def validate_professor_id(self, value):
+        if Professor.objects.filter(professor_id=value).exists():
+            raise serializers.ValidationError("A professor with this ID already exists.")
+        return value
 
     def create(self, validated_data):
         username = validated_data.pop('username')

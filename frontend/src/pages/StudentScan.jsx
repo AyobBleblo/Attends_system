@@ -1,300 +1,285 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
-import { BookOpen, QrCode, CheckCircle, XCircle, Camera, CameraOff, KeyRound } from 'lucide-react';
+import {
+  BookOpen, Loader2, RefreshCw, KeyRound, X,
+  CheckCircle, XCircle,
+} from 'lucide-react';
+import EnrolledCourseCard from '../components/student/EnrolledCourseCard';
+import QrScannerModal   from '../components/common/QrScannerModal';
+import SkeletonCard      from '../components/common/SkeletonCard';
 
-function StudentDashboard() {
-  const { user } = useAuth();
-  const navigate = useNavigate();
+// ── Full-screen scan result overlay (success / fail) ──────────────────────────
+const ScanResult = ({ result, onClose }) => {
+  if (!result) return null;
+  const ok = result.type === 'success';
+  return (
+    <div className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm">
+      <div className="flex flex-col items-center gap-4 animate-scale-in text-center px-8">
+        {ok ? (
+          <CheckCircle size={80} className="text-emerald-400" />
+        ) : (
+          <XCircle size={80} className="text-red-400 animate-shake" />
+        )}
+        <p className={`text-2xl font-bold ${ok ? 'text-emerald-300' : 'text-red-300'}`}>
+          {ok ? 'Attendance Recorded!' : 'Scan Failed'}
+        </p>
+        <p className="text-white/70 text-sm max-w-xs">{result.message}</p>
+        <button onClick={onClose} className="mt-4 btn-primary bg-white/10 hover:bg-white/20 border border-white/20">
+          <X size={16} /> Close
+        </button>
+      </div>
+    </div>
+  );
+};
 
-  const [selectedCourse, setSelectedCourse] = useState(null);
-  const [qrToken, setQrToken] = useState('');
-  const [scanStatus, setScanStatus] = useState(null);
+// ── Manual token entry modal (fallback when camera is unavailable) ─────────────
+const ManualModal = ({ course, studentId, onClose, onResult }) => {
+  const [token,   setToken]   = useState('');
   const [loading, setLoading] = useState(false);
-  const [cameraMode, setCameraMode] = useState(false); // false = manual, true = camera
-  const [cameraError, setCameraError] = useState(null);
-  const videoRef = useRef(null);
-  const streamRef = useRef(null);
-  const scanIntervalRef = useRef(null);
 
-  useEffect(() => {
-    if (!user) { navigate('/login'); return; }
-    if (user.role !== 'student') { navigate('/professor'); return; }
-  }, [user, navigate]);
-
-  // Cleanup camera on unmount or when leaving camera mode
-  useEffect(() => {
-    return () => stopCamera();
-  }, []);
-
-  const startCamera = async () => {
-    setCameraError(null);
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: 'environment' }
-      });
-      streamRef.current = stream;
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        videoRef.current.play();
-      }
-      setCameraMode(true);
-      startScanLoop();
-    } catch (err) {
-      setCameraError('Camera access denied. Please allow camera permission or use manual input.');
-      setCameraMode(false);
-    }
-  };
-
-  const stopCamera = () => {
-    if (scanIntervalRef.current) {
-      clearInterval(scanIntervalRef.current);
-      scanIntervalRef.current = null;
-    }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    }
-    if (videoRef.current) {
-      videoRef.current.srcObject = null;
-    }
-    setCameraMode(false);
-  };
-
-  // Use BarcodeDetector API (Chrome/Edge) or fallback to ZXing-style canvas scanning
-  const startScanLoop = () => {
-    if (!('BarcodeDetector' in window)) {
-      setCameraError('Your browser does not support automatic QR scanning. Please enter the code manually.');
-      return;
-    }
-    const detector = new window.BarcodeDetector({ formats: ['qr_code'] });
-    scanIntervalRef.current = setInterval(async () => {
-      if (!videoRef.current || videoRef.current.readyState < 2) return;
-      try {
-        const codes = await detector.detect(videoRef.current);
-        if (codes.length > 0) {
-          const value = codes[0].rawValue;
-          stopCamera();
-          setQrToken(value);
-          submitAttendance(value);
-        }
-      } catch (e) { /* keep scanning */ }
-    }, 500);
-  };
-
-  const submitAttendance = async (token) => {
-    if (!selectedCourse || !token) return;
-    setScanStatus(null);
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!token.trim()) return;
     setLoading(true);
     try {
       const res = await api.post('/attendance/scan/', {
-        student_id: user.student_id,
-        qr_token: token,
+        student_id: studentId,
+        qr_token: token.trim(),
       });
-      setScanStatus({ type: 'success', text: res.data.message || 'Attendance recorded successfully!' });
-      setQrToken('');
+      onResult({ type: 'success', message: res.data.message || 'Attendance recorded!' });
     } catch (err) {
-      setScanStatus({ type: 'error', text: err.response?.data?.error || 'Failed to record attendance.' });
+      onResult({ type: 'error', message: err.response?.data?.error || 'Failed to record attendance.' });
+    } finally {
+      setLoading(false);
+      onClose();
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+      <div className="card w-full max-w-md p-6 animate-slide-down dark:bg-slate-900">
+        <div className="flex items-center justify-between mb-5">
+          <div>
+            <h3 className="font-bold text-slate-800 dark:text-slate-100">Enter QR Token</h3>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {course?.code} — {course?.name}
+            </p>
+          </div>
+          <button onClick={onClose} className="btn-ghost p-1.5"><X size={18} /></button>
+        </div>
+        <form onSubmit={submit} className="space-y-4">
+          <div>
+            <label className="form-label">QR Token Code</label>
+            <input
+              className="input font-mono"
+              placeholder="Paste or type the token…"
+              value={token}
+              onChange={e => setToken(e.target.value)}
+              autoFocus
+              required
+            />
+          </div>
+          <button type="submit" disabled={loading} className="btn-primary w-full justify-center">
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
+            {loading ? 'Submitting…' : 'Submit Attendance'}
+          </button>
+        </form>
+      </div>
+    </div>
+  );
+};
+
+// ── Main page ─────────────────────────────────────────────────────────────────
+function StudentScan() {
+  const { user }   = useAuth();
+  const navigate   = useNavigate();
+
+  const [courses,      setCourses]      = useState([]);
+  const [loading,      setLoading]      = useState(true);
+  const [semesterName, setSemesterName] = useState('');
+
+  const [selectedCourse, setSelectedCourse] = useState(null);
+  const [showScanner,    setShowScanner]    = useState(false);  // ← QrScannerModal
+  const [showManual,     setShowManual]     = useState(false);  // ← manual fallback
+  const [scanResult,     setScanResult]     = useState(null);   // { type, message }
+  const [submitting,     setSubmitting]     = useState(false);
+
+  // ── Guard ──────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (!user)                    { navigate('/login');     return; }
+    if (user.role !== 'student')  { navigate('/professor'); return; }
+    fetchCourses();
+  }, [user]);
+
+  // ── Fetch enrolled courses ─────────────────────────────────────────────────
+  const fetchCourses = async () => {
+    setLoading(true);
+    try {
+      const token = localStorage.getItem('access_token');
+      const res = await fetch(`/api/student/${user.student_id}/courses/`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setCourses(data.courses || []);
+      setSemesterName(data.semester || '');
+    } catch {
+      setCourses(user.courses || []);
     } finally {
       setLoading(false);
     }
   };
 
-  const handleManualSubmit = (e) => {
-    e.preventDefault();
-    submitAttendance(qrToken);
+  // ── Called by QrScannerModal the instant a QR code is decoded ─────────────
+  //    No submit button, no manual input — 100% automatic.
+  const handleScanned = useCallback(async (decodedToken) => {
+    setShowScanner(false);
+    setSubmitting(true);
+    setScanResult(null);
+    try {
+      const res = await api.post('/attendance/scan/', {
+        student_id: user.student_id,
+        qr_token:  decodedToken,
+      });
+      setScanResult({ type: 'success', message: res.data.message || 'Attendance recorded!' });
+      fetchCourses();   // refresh attendance % on the cards
+    } catch (err) {
+      setScanResult({
+        type:    'error',
+        message: err.response?.data?.error || 'Failed to record attendance.',
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  }, [user]);
+
+  // ── Decide whether to open scanner or manual entry ─────────────────────────
+  const handleScanCard = (course) => {
+    setSelectedCourse(course);
+    // html5-qrcode works on all modern browsers, so try scanner first.
+    // If the camera is truly unavailable, QrScannerModal shows an error
+    // and user can close it then tap the "manual" path.
+    setShowScanner(true);
+  };
+
+  // ── Scanner: plain cancel (user pressed Cancel) ────────────────────────────
+  const handleScannerClose = () => setShowScanner(false);
+
+  // ── Scanner: user chose "Enter token manually" ────────────────────────────
+  const handleManualFallback = () => {
+    setShowScanner(false);
+    setShowManual(true);
   };
 
   if (!user) return null;
-  const courses = user.courses || [];
 
   return (
-    <div className="dashboard-container fade-in">
-      <header className="dashboard-header">
-        <h1>Welcome, {user.name}</h1>
-        <p className="text-muted">
-          {user.department} · Student ID: <strong>{user.student_id}</strong>
-        </p>
-      </header>
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
 
-      {!selectedCourse ? (
-        /* ── Step 1: Pick a course ── */
-        <div>
-          <h3 style={{ marginBottom: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <BookOpen size={20} /> My Enrolled Courses
-          </h3>
+      {/* ── Scan result overlay ───────────────────────────────────────────── */}
+      {scanResult && (
+        <ScanResult
+          result={scanResult}
+          onClose={() => { setScanResult(null); setSelectedCourse(null); }}
+        />
+      )}
 
-          {courses.length === 0 ? (
-            <div className="card" style={{ textAlign: 'center', color: 'var(--text-muted)', padding: '3rem' }}>
-              You are not enrolled in any courses this semester. Contact admin.
-            </div>
-          ) : (
-            <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))' }}>
-              {courses.map(c => (
-                <button
-                  key={c.id}
-                  className="card"
-                  style={{
-                    textAlign: 'left', cursor: 'pointer',
-                    border: '2px solid var(--border)',
-                    background: 'var(--card-bg)',
-                    transition: 'border-color 0.2s, box-shadow 0.2s, transform 0.2s',
-                    padding: '1.25rem', borderRadius: '12px', width: '100%',
-                  }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = 'var(--success)'; e.currentTarget.style.transform = 'translateY(-2px)'; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.transform = 'none'; }}
-                  onClick={() => { setSelectedCourse(c); setScanStatus(null); setQrToken(''); }}
-                >
-                  <span style={{
-                    display: 'inline-block', background: 'var(--success)',
-                    color: '#fff', borderRadius: '6px', padding: '2px 10px',
-                    fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem',
-                  }}>
-                    {c.code}
-                  </span>
-                  <h3 style={{ margin: 0, fontSize: '1.05rem' }}>{c.name}</h3>
-                  <p className="text-muted" style={{ margin: '0.25rem 0 0', fontSize: '0.85rem' }}>{c.department_name}</p>
-                  <div style={{ marginTop: '0.75rem', color: 'var(--success)', fontSize: '0.85rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '0.4rem' }}>
-                    <QrCode size={14} /> Tap to record attendance
-                  </div>
-                </button>
-              ))}
-            </div>
-          )}
+      {/* ── Native QR scanner (html5-qrcode) ─────────────────────────────── */}
+      {showScanner && selectedCourse && (
+        <QrScannerModal
+          course={selectedCourse}
+          onScanned={handleScanned}
+          onClose={handleScannerClose}
+          onManualFallback={handleManualFallback}
+        />
+      )}
+
+      {/* ── Manual token entry (fallback / accessibility) ─────────────────── */}
+      {showManual && selectedCourse && (
+        <ManualModal
+          course={selectedCourse}
+          studentId={user.student_id}
+          onClose={() => { setShowManual(false); setSelectedCourse(null); }}
+          onResult={(r) => { setScanResult(r); fetchCourses(); }}
+        />
+      )}
+
+      {/* ── Student hero header ───────────────────────────────────────────── */}
+      <div className="relative mb-8 overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600 p-7 text-white shadow-lg">
+        <div className="absolute -top-10 -right-10 w-36 h-36 bg-white/10 rounded-full blur-2xl" />
+        <div className="relative">
+          <p className="text-white/70 text-sm uppercase tracking-wide font-medium mb-1">Student Portal</p>
+          <h1 className="text-3xl font-extrabold tracking-tight">أهلاً، {user.name}</h1>
+          <p className="text-white/80 text-sm mt-1">Hello, {user.name}</p>
+          <div className="flex flex-wrap gap-3 mt-4">
+            <span className="badge bg-white/20 text-white border border-white/30 text-sm px-3 py-1">
+              ID: {user.student_id}
+            </span>
+            <span className="badge bg-white/20 text-white border border-white/30 text-sm px-3 py-1">
+              {user.department}
+            </span>
+            {semesterName && (
+              <span className="text-white/60 text-xs flex items-center gap-1">
+                📅 {semesterName}
+              </span>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* ── Section title ─────────────────────────────────────────────────── */}
+      <div className="flex items-center justify-between mb-5">
+        <div className="flex items-center gap-2">
+          <BookOpen size={20} className="text-emerald-500" />
+          <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">My Enrolled Courses</h2>
+        </div>
+        <button onClick={fetchCourses} className="btn-ghost text-xs">
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
+        </button>
+      </div>
+
+      {/* ── Course grid ───────────────────────────────────────────────────── */}
+      {loading ? (
+        <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map(i => <SkeletonCard key={i} lines={5} />)}
+        </div>
+      ) : courses.length === 0 ? (
+        <div className="card py-16 text-center">
+          <BookOpen size={40} className="mx-auto text-slate-300 dark:text-slate-600 mb-3" />
+          <p className="text-slate-500 dark:text-slate-400 font-medium">
+            You are not enrolled in any courses this semester.
+          </p>
+          <p className="text-xs text-slate-400 mt-1">Contact the admin to enroll you.</p>
         </div>
       ) : (
-        /* ── Step 2: Scan or enter QR ── */
-        <div style={{ maxWidth: '540px' }}>
-          <button
-            className="btn"
-            style={{ marginBottom: '1.5rem', background: 'transparent', border: '1px solid var(--border)', color: 'var(--text-main)', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-            onClick={() => { setSelectedCourse(null); setScanStatus(null); stopCamera(); }}
-          >
-            ← Back to Courses
-          </button>
+        <>
+          {/* Summary bar */}
+          <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+            <span className="font-semibold">{courses.length}</span> courses enrolled.
+            Tap <span className="font-semibold text-brand-500">Scan Attendance</span> on any card when your professor opens a session.
+          </div>
 
-          <div className="card" style={{ padding: '2rem' }}>
-            {/* Course Header */}
-            <div style={{ marginBottom: '1.5rem' }}>
-              <span style={{
-                display: 'inline-block', background: 'var(--success)', color: '#fff',
-                borderRadius: '6px', padding: '2px 10px', fontSize: '0.8rem', fontWeight: 600, marginBottom: '0.5rem',
-              }}>
-                {selectedCourse.code}
-              </span>
-              <h2 style={{ margin: 0 }}>{selectedCourse.name}</h2>
-              <p className="text-muted" style={{ marginTop: '0.25rem' }}>
-                Student: <strong>{user.name}</strong> · ID: <strong>{user.student_id}</strong>
-              </p>
-            </div>
 
-            {/* Status Banner */}
-            {scanStatus && (
-              <div style={{
-                padding: '1rem', borderRadius: '8px', marginBottom: '1.5rem',
-                background: scanStatus.type === 'success' ? '#def7ec' : '#fde8e8',
-                color: scanStatus.type === 'success' ? '#03543f' : '#9b1c1c',
-                border: `1px solid ${scanStatus.type === 'success' ? '#31c48d' : '#f98080'}`,
-                display: 'flex', alignItems: 'center', gap: '0.5rem',
-              }}>
-                {scanStatus.type === 'success' ? <CheckCircle size={18} /> : <XCircle size={18} />}
-                {scanStatus.text}
-              </div>
-            )}
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+            {courses.map(course => (
+              <EnrolledCourseCard
+                key={course.id}
+                course={course}
+                onScan={() => handleScanCard(course)}
+              />
+            ))}
+          </div>
+        </>
+      )}
 
-            {cameraError && (
-              <div style={{ padding: '0.75rem 1rem', borderRadius: '8px', marginBottom: '1rem', background: '#fef3c7', color: '#92400e', border: '1px solid #fcd34d', fontSize: '0.9rem' }}>
-                ⚠️ {cameraError}
-              </div>
-            )}
-
-            {/* Mode Toggle */}
-            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
-              <button
-                className="btn"
-                onClick={() => { setCameraMode(false); stopCamera(); }}
-                style={{
-                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-                  background: !cameraMode ? 'var(--accent)' : 'transparent',
-                  color: !cameraMode ? '#fff' : 'var(--text-main)',
-                  border: `1px solid ${!cameraMode ? 'var(--accent)' : 'var(--border)'}`,
-                }}
-              >
-                <KeyRound size={16} /> Manual Code
-              </button>
-              <button
-                className="btn"
-                onClick={startCamera}
-                style={{
-                  flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-                  background: cameraMode ? 'var(--success)' : 'transparent',
-                  color: cameraMode ? '#fff' : 'var(--text-main)',
-                  border: `1px solid ${cameraMode ? 'var(--success)' : 'var(--border)'}`,
-                }}
-              >
-                <Camera size={16} /> Scan Camera
-              </button>
-            </div>
-
-            {/* Camera View */}
-            {cameraMode && (
-              <div style={{ marginBottom: '1.5rem', textAlign: 'center' }}>
-                <div style={{ position: 'relative', borderRadius: '12px', overflow: 'hidden', background: '#000', aspectRatio: '4/3' }}>
-                  <video ref={videoRef} style={{ width: '100%', height: '100%', objectFit: 'cover' }} playsInline muted />
-                  {/* Scanner overlay */}
-                  <div style={{
-                    position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}>
-                    <div style={{
-                      width: 180, height: 180, border: '3px solid #10b981',
-                      borderRadius: '12px', boxShadow: '0 0 0 9999px rgba(0,0,0,0.4)',
-                    }}/>
-                  </div>
-                </div>
-                <p className="text-muted" style={{ marginTop: '0.75rem', fontSize: '0.85rem' }}>
-                  Point your camera at the professor's QR code
-                </p>
-                <button
-                  className="btn"
-                  onClick={stopCamera}
-                  style={{ marginTop: '0.5rem', display: 'inline-flex', alignItems: 'center', gap: '0.4rem', border: '1px solid var(--border)', background: 'transparent', color: 'var(--text-main)' }}
-                >
-                  <CameraOff size={16} /> Stop Camera
-                </button>
-              </div>
-            )}
-
-            {/* Manual Input */}
-            {!cameraMode && (
-              <form onSubmit={handleManualSubmit}>
-                <div style={{ marginBottom: '1.5rem' }}>
-                  <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: 600, fontSize: '0.9rem' }}>
-                    QR Token Code
-                  </label>
-                  <input
-                    className="input"
-                    type="text"
-                    placeholder="Paste or type the QR token from your professor..."
-                    value={qrToken}
-                    onChange={e => setQrToken(e.target.value)}
-                    required
-                    style={{ marginBottom: 0 }}
-                  />
-                  <p className="text-muted" style={{ marginTop: '0.5rem', fontSize: '0.8rem' }}>
-                    Ask your professor for the QR code token shown on-screen.
-                  </p>
-                </div>
-                <button
-                  type="submit"
-                  className="btn btn-success"
-                  style={{ width: '100%', justifyContent: 'center', padding: '0.875rem', display: 'flex', alignItems: 'center', gap: '0.5rem' }}
-                  disabled={loading}
-                >
-                  {loading ? 'Recording...' : <><CheckCircle size={18} /> Submit Attendance</>}
-                </button>
-              </form>
-            )}
+      {/* ── Submitting overlay ────────────────────────────────────────────── */}
+      {submitting && (
+        <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <div className="card p-6 flex flex-col items-center gap-3">
+            <Loader2 size={32} className="animate-spin text-brand-500" />
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Recording attendance…</p>
           </div>
         </div>
       )}
@@ -302,4 +287,4 @@ function StudentDashboard() {
   );
 }
 
-export default StudentDashboard;
+export default StudentScan;

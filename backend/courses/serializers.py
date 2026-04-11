@@ -1,5 +1,9 @@
 from rest_framework import serializers
+from django.db import transaction
+from django.contrib.auth.models import User
 from .models import Course, CourseAssignment
+from core.models import Department, Semester
+from accounts.models import Professor
 
 
 class CourseSerializer(serializers.ModelSerializer):
@@ -20,3 +24,83 @@ class CourseAssignmentSerializer(serializers.ModelSerializer):
         model = CourseAssignment
         fields = ['id', 'professor', 'professor_name', 'course', 'course_code',
                   'course_name', 'semester', 'semester_name']
+
+
+class NestedCourseAssignmentSerializer(serializers.Serializer):
+    """
+    Accepts human-readable string identifiers and resolves / creates the full
+    Department → Course → Professor → Semester → CourseAssignment chain
+    inside a single atomic transaction.
+    """
+    department_name = serializers.CharField(max_length=100)
+    department_code = serializers.CharField(max_length=20)
+    course_code     = serializers.CharField(max_length=20)
+    course_name     = serializers.CharField(max_length=100)
+    professor_id    = serializers.CharField(max_length=20)
+    professor_name  = serializers.CharField(max_length=100)
+    professor_username = serializers.CharField(max_length=150)
+    professor_password = serializers.CharField(max_length=128, write_only=True)
+    semester_name   = serializers.CharField(max_length=100)
+
+    def create(self, validated_data):
+        with transaction.atomic():
+            # 1. Department
+            department, _ = Department.objects.get_or_create(
+                code=validated_data['department_code'].upper(),
+                defaults={'name': validated_data['department_name']}
+            )
+
+            # 2. Course
+            course, _ = Course.objects.get_or_create(
+                code=validated_data['course_code'].upper(),
+                defaults={
+                    'name': validated_data['course_name'],
+                    'department': department,
+                }
+            )
+
+            # 3. Professor — create Django User if needed
+            professor_qs = Professor.objects.filter(
+                professor_id=validated_data['professor_id']
+            )
+            if professor_qs.exists():
+                professor = professor_qs.first()
+            else:
+                user, created = User.objects.get_or_create(
+                    username=validated_data['professor_username'],
+                    defaults={}
+                )
+                if created:
+                    user.set_password(validated_data['professor_password'])
+                    user.save()
+                professor = Professor.objects.create(
+                    user=user,
+                    professor_id=validated_data['professor_id'],
+                    name=validated_data['professor_name'],
+                    department=department,
+                )
+
+            # 4. Semester (must exist; look up by name — admins create semesters separately)
+            try:
+                semester = Semester.objects.get(name=validated_data['semester_name'])
+            except Semester.DoesNotExist:
+                raise serializers.ValidationError(
+                    {'semester_name': f"Semester '{validated_data['semester_name']}' not found. Create it first."}
+                )
+
+            # 5. CourseAssignment
+            assignment, created = CourseAssignment.objects.get_or_create(
+                professor=professor,
+                course=course,
+                semester=semester,
+            )
+
+        return {
+            'assignment_id': assignment.id,
+            'created': created,
+            'professor': professor.name,
+            'course': f"{course.code} — {course.name}",
+            'department': department.name,
+            'semester': semester.name,
+        }
+
