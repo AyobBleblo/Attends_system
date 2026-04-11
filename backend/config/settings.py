@@ -71,6 +71,9 @@ DATABASES = {
         'PASSWORD': os.getenv('DB_PASSWORD', ''),
         'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': os.getenv('DB_PORT', '5432'),
+        # Keep DB connections alive for 10 min to avoid per-request TCP+auth overhead.
+        # Critical for high-concurrency: 25 workers × 100 students = no reconnect storm.
+        'CONN_MAX_AGE': 600,
     }
 }
 

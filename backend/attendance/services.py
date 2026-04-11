@@ -1,5 +1,5 @@
 from django.utils import timezone
-from django.db import IntegrityError
+from django.db import IntegrityError, transaction
 from core.models import Semester
 from accounts.models import Student
 from courses.models import CourseAssignment
@@ -9,11 +9,17 @@ from attendance.models import Session, Enrollment, Attendance
 def record_attendance(student_id: str, qr_token: str) -> dict:
     now = timezone.now()
 
-    # 1. Find Session by qr_token
-    try:
-        session = Session.objects.select_related('course', 'professor', 'semester').get(qr_token=qr_token)
-    except Session.DoesNotExist:
+    # ── EARLY EXIT: Fast indexed validation before any heavy logic ────────
+    #    These EXISTS queries hit indexed columns and return in < 1ms.
+    #    Rejects invalid tokens/students before loading full objects.
+    if not Session.objects.filter(qr_token=qr_token).exists():
         return {'success': False, 'error': 'Invalid QR code. No session found.'}
+
+    if not Student.objects.filter(student_id=student_id).exists():
+        return {'success': False, 'error': f'No student found with ID: {student_id}'}
+
+    # 1. Find Session by qr_token (full object needed for subsequent checks)
+    session = Session.objects.select_related('course', 'professor', 'semester').get(qr_token=qr_token)
 
     # 2. Check QR not expired
     if session.qr_expires_at <= now:
@@ -27,31 +33,30 @@ def record_attendance(student_id: str, qr_token: str) -> dict:
     except Semester.DoesNotExist:
         return {'success': False, 'error': 'No active semester found.'}
 
-    # Find the Student
-    try:
-        student = Student.objects.get(student_id=student_id)
-    except Student.DoesNotExist:
-        return {'success': False, 'error': f'No student found with ID: {student_id}'}
+    # Find the Student (already validated via early-exit above)
+    student = Student.objects.only('id', 'student_id', 'name').get(student_id=student_id)
 
     # 4. Check the Student is enrolled in the Session's course
+    #    Using _id FK shortcuts avoids re-fetching related objects
     is_enrolled = Enrollment.objects.filter(
-        student=student, course=session.course, semester=session.semester
+        student_id=student.pk, course_id=session.course_id, semester_id=session.semester_id
     ).exists()
     if not is_enrolled:
         return {'success': False, 'error': f'Student is not enrolled in {session.course.code}.'}
 
     # Check professor assignment (optional safety check)
     is_assigned = CourseAssignment.objects.filter(
-        professor=session.professor, course=session.course, semester=session.semester
+        professor_id=session.professor_id, course_id=session.course_id, semester_id=session.semester_id
     ).exists()
     if not is_assigned:
         return {'success': False, 'error': 'Professor is not assigned to this course.'}
 
-    # 5. Create the Attendance record
+    # 5. Create the Attendance record (atomic block keeps connection clean on IntegrityError)
     try:
-        attendance = Attendance.objects.create(
-            session=session, student=student, status='present'
-        )
+        with transaction.atomic():
+            attendance = Attendance.objects.create(
+                session=session, student=student, status='present'
+            )
     except IntegrityError:
         return {'success': False, 'error': 'You have already registered your attendance for this lecture.'}
 

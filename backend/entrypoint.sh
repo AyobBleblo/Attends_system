@@ -67,16 +67,23 @@ else:
 "
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 4. Start Gunicorn — tuned for a 4-core production server
-#    workers  = (2 × cores) + 1 = 9
-#    timeout  = 120 s  (covers heavy PDF/report endpoints)
+# 4. Start Gunicorn — tuned for a 12-core production server
+#    workers      = (2 × 12 cores) + 1 = 25
+#    worker-class = gthread (native threads — avoids gevent monkey-patching issues)
+#    threads      = 4 per worker (25 × 4 = 100 concurrent request slots)
+#    timeout      = 120 s  (covers heavy PDF/report endpoints)
 #    access-logfile - = stream access logs to stdout (Docker/K8s friendly)
 # ─────────────────────────────────────────────────────────────────────────────
-echo "🚀  Starting Gunicorn (9 workers, 120 s timeout)..."
+echo "🚀  Starting Gunicorn (25 gthread workers × 4 threads, 120 s timeout)..."
 exec gunicorn config.wsgi:application \
     --bind 0.0.0.0:8000 \
-    --workers 9 \
+    --workers 25 \
+    --worker-class gthread \
+    --threads 4 \
     --timeout 120 \
+    --keep-alive 5 \
+    --max-requests 1000 \
+    --max-requests-jitter 50 \
     --access-logfile - \
     --error-logfile - \
     --log-level info
