@@ -52,6 +52,7 @@ services:
       - DB_PORT=5432
       - SECRET_KEY=${SECRET_KEY:-fallback-secret-key-change-in-production}
       - ALLOWED_HOSTS=*
+      - USE_FAST_HASHER=True
     depends_on:
       - db
     volumes:
@@ -77,6 +78,14 @@ services:
       - backend
     volumes:
       - static_volume:/app/staticfiles:ro
+    deploy:
+      resources:
+        limits:
+          cpus: '4.0'
+          memory: 1024M
+        reservations:
+          cpus: '1.0'
+          memory: 256M
     networks:
       - app_network
 

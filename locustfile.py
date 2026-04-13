@@ -1,10 +1,11 @@
 from locust import HttpUser, task, between, events
-import threading
+from locust.exception import StopUser
 import urllib3
-# 1. إيقاف تحذيرات الشهادات غير الآمنة في الكونسول
+import threading
+
+# 1. Disable SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-# A thread-safe counter to generate unique student digits (1 to 100)
-# Adjust the formatting to perfectly match how your students are seeded.
+
 class Counter:
     def __init__(self):
         self.val = 1
@@ -19,66 +20,56 @@ class Counter:
 student_counter = Counter()
 
 class AttendanceLoadTest(HttpUser):
-    # Wait 1-2 seconds between tasks (can be removed if you want them to hammer non-stop)
-    wait_time = between(1, 2)
+    # Set wait_time to 0 for maximum throughput per user
+    wait_time = between(0, 0)
 
     def on_start(self):
         """
-        Executed when a simulated user starts.
-        1. Grab a unique student profile.
-        2. Send login request to get JWT Token.
-        3. Attach token to session headers.
+        Setup unique student credentials and authenticate.
         """
-        idx = student_counter.get_next()
         self.client.verify = False
         
-        # ─────────────────────────────────────────────────────────────────
-        # CHANGE THESE TO MATCH YOUR SEED DATA / AUTHENTICATION LOGIC
-        # ─────────────────────────────────────────────────────────────────
-        # Example: student_1@university.local, student123, etc.
+        # Get unique index
+        raw_idx = student_counter.get_next()
+        # Ensure we stay within our seeded data range (e.g., 1 to 1000)
+        idx = ((raw_idx - 1) % 1000) + 1
+        
         self.username = f"student_{idx}@university.local" 
         self.password = "Student@1234"
-        
-        # Student ID that the /api/attendance/scan/ endpoint expects
-        self.student_id = f"STU{idx:03d}"  
-
-        # A valid or dummy QR token to test DB concurrency
+        self.student_id = f"STU{idx:04d}"
         self.qr_token = "test-qr-token-12345"
-        
-        # 1. Login to retrieve the JWT Token
-        response = self.client.post("/api/auth/login/", json={
+
+        # Login Logic
+        with self.client.post("/api/auth/login/", json={
             "username": self.username,
             "password": self.password
-        }, name="AUTH /api/auth/login/")
-
-        if response.status_code == 200:
-            token = response.json().get("access")
-            if token:
-                self.client.headers.update({"Authorization": f"Bearer {token}"})
-        else:
-            # If login fails, log it. (Useful to see if DB is bottlenecking on auth)
-            print(f"⚠️ Login Failed for {self.username} - Status: {response.status_code}")
+        }, name="AUTH_Login", catch_response=True) as response:
+            if response.status_code == 200:
+                token = response.json().get("access")
+                if token:
+                    self.client.headers.update({"Authorization": f"Bearer {token}"})
+                else:
+                    response.failure("Login successful but no token received")
+            else:
+                response.failure(f"Login Failed: {response.status_code}")
 
     @task
     def scan_qr_code(self):
-        """
-        Send a POST request to the attendance scan endpoint.
-        """
         payload = {
             "student_id": self.student_id,
             "qr_token": self.qr_token
         }
 
-        # 2. Hit the attendance scan endpoint
-        with self.client.post("/api/attendance/scan/", json=payload, name="POST /api/attendance/scan/", catch_response=True) as response:
-            
-            # The API might successfully register (200) or return (400) because "You have already registered"
-            # Both signify the DB logic executed correctly under load, so we mark it as success to isolate true 500 errors.
-            if response.status_code == 200:
+        # catch_response=True allows us to treat 400 as a success 
+        # (e.g., "Already Scanned" is a valid business logic response)
+        with self.client.post("/api/attendance/scan/", json=payload, name="POST_Scan_QR", catch_response=True) as response:
+            if response.status_code == 200 or response.status_code == 201:
                 response.success()
             elif response.status_code == 400:
-                # You can comment this out if you strictly want 400s to show as failures in Locust, 
-                # but "Already Registered" is an expected load-test race-condition error, not an infrastructure crash.
-                response.success()
+                # If 400 means "Already marked present", it's a success in terms of server load
+                response.success() 
             else:
-                response.failure(f"Crash / Error: Status {response.status_code} - {response.text}")
+                response.failure(f"Server Error: {response.status_code} - {response.text}")
+
+        # Stop the user after one task to simulate real-world 'scan and leave' behavior
+        raise StopUser()

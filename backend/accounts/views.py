@@ -87,8 +87,8 @@ class MeView(APIView):
             })
 
         # Check if professor
-        try:
-            professor = user.professor_profile
+        professor = Professor.objects.filter(user=user).first()
+        if professor:
             semester = Semester.objects.filter(is_active=True).first()
             courses = []
             if semester:
@@ -105,12 +105,10 @@ class MeView(APIView):
                 'department': professor.department.name,
                 'courses': courses,
             })
-        except Professor.DoesNotExist:
-            pass
 
         # Check if student
-        try:
-            student = user.student_profile
+        student = Student.objects.filter(user=user).first()
+        if student:
             semester = Semester.objects.filter(is_active=True).first()
             courses = []
             if semester:
@@ -127,7 +125,6 @@ class MeView(APIView):
                 'department': student.department.name,
                 'courses': courses,
             })
-        except Student.DoesNotExist:
-            pass
 
-        return Response({'error': 'User has no associated profile and is not an admin.'}, status=400)
+        print(f"DEBUG: Returning 400 for user {user.username} (id: {user.id}). is_staff: {user.is_staff}")
+        return Response({'error': f'User {user.username} has no associated profile and is not an admin.'}, status=400)

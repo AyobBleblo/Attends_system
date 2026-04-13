@@ -55,31 +55,41 @@ python manage.py seed_demo
 # ─────────────────────────────────────────────────────────────────────────────
 # 3. Create superuser if it doesn't exist
 # ─────────────────────────────────────────────────────────────────────────────
-echo "👤  Creating superuser if not exists..."
+echo "👤  Ensuring superuser exists and password hash is current..."
 python manage.py shell -c "
 from django.contrib.auth import get_user_model
 U = get_user_model()
-if not U.objects.filter(username='admin').exists():
-    U.objects.create_superuser('admin', 'admin@university.local', 'Admin@1234')
-    print('✅  Superuser created.')
-else:
-    print('ℹ️   Superuser already exists.')
+user, created = U.objects.get_or_create(
+    username='admin',
+    defaults={'email': 'admin@university.local', 'is_staff': True, 'is_superuser': True}
+)
+# Always re-hash so the stored hash matches the current PASSWORD_HASHERS config.
+user.set_password('Admin@1234')
+user.is_staff = True
+user.is_superuser = True
+user.save()
+print('✅  Superuser created.' if created else 'ℹ️   Superuser password hash refreshed.')
 "
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 4. Start Gunicorn — tuned for a 12-core production server
-#    workers      = (2 × 12 cores) + 1 = 25
+# 3b. Seed load-test students (idempotent — skips if already exist)
+# ─────────────────────────────────────────────────────────────────────────────
+echo "🧪  Seeding 1000 load-test students..."
+python manage.py seed_test_students --count 1000
+
+# ─────────────────────────────────────────────────────────────────────────────
+#    workers      = 9 (optimized for 12 cores + Locust)
 #    worker-class = gthread (native threads — avoids gevent monkey-patching issues)
-#    threads      = 4 per worker (25 × 4 = 100 concurrent request slots)
+#    threads      = 2 per worker (18 concurrent request slots)
 #    timeout      = 120 s  (covers heavy PDF/report endpoints)
 #    access-logfile - = stream access logs to stdout (Docker/K8s friendly)
 # ─────────────────────────────────────────────────────────────────────────────
-echo "🚀  Starting Gunicorn (25 gthread workers × 4 threads, 120 s timeout)..."
+echo "🚀  Starting Gunicorn (9 gthread workers × 2 threads, 120 s timeout)..."
 exec gunicorn config.wsgi:application \
     --bind 0.0.0.0:8000 \
-    --workers 25 \
+    --workers 9 \
     --worker-class gthread \
-    --threads 4 \
+    --threads 2 \
     --timeout 120 \
     --keep-alive 5 \
     --max-requests 1000 \

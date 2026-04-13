@@ -37,7 +37,12 @@ User = get_user_model()
 
 
 def _make_user(username, password, first_name='', last_name=''):
-    """Create a Django user if it does not already exist."""
+    """Create or update a Django user.
+
+    Always calls set_password so the stored hash stays in sync with whichever
+    PASSWORD_HASHERS is currently configured (e.g. USE_FAST_HASHER toggled
+    between container restarts).  This makes the command fully idempotent.
+    """
     user, created = User.objects.get_or_create(
         username=username,
         defaults={
@@ -46,9 +51,10 @@ def _make_user(username, password, first_name='', last_name=''):
             'is_active': True,
         }
     )
-    if created:
-        user.set_password(password)
-        user.save()
+    # Re-hash unconditionally — cheap and ensures hasher changes don't
+    # leave old users with an incompatible hash prefix.
+    user.set_password(password)
+    user.save()
     return user, created
 
 

@@ -5,10 +5,14 @@ from core.models import Department
 from django.db import IntegrityError, transaction
 
 class Command(BaseCommand):
-    help = 'Seeds the database with exactly 100 test students for Locust Load Testing'
+    help = 'Seeds the database with test students for Locust Load Testing'
+
+    def add_arguments(self, parser):
+        parser.add_argument('--count', type=int, default=1000, help='Number of students to seed (default: 1000)')
 
     def handle(self, *args, **kwargs):
-        self.stdout.write(self.style.NOTICE("Starting to seed test students..."))
+        count = kwargs['count']
+        self.stdout.write(self.style.NOTICE(f"Starting to seed {count} test students..."))
         
         # 1. Ensure we have a generic department to bind these students to
         department, dep_created = Department.objects.get_or_create(
@@ -21,12 +25,11 @@ class Command(BaseCommand):
         success_count = 0
         skipped_count = 0
 
-        # Generate exactly 100 students (1 to 100)
-        for i in range(1, 101):
+        for i in range(1, count + 1):
             username = f"student_{i}@university.local"
             email = username 
             password = "Student@1234"
-            student_id = f"STU{i:03d}"
+            student_id = f"STU{i:04d}"
             name = f"Test Student {i}"
 
             # Use atomic transactions to ensure no partial creations happen on failure
@@ -42,10 +45,9 @@ class Command(BaseCommand):
                         }
                     )
                     
-                    if user_created:
-                        # CRITICAL: Hash the password properly!
-                        user.set_password(password)
-                        user.save()
+                    # CRITICAL: Always update password for hasher changes
+                    user.set_password(password)
+                    user.save()
 
                     # Check/Create the connected Student Profile
                     student, student_created = Student.objects.get_or_create(
@@ -65,11 +67,12 @@ class Command(BaseCommand):
                     # Console Output Logic
                     if user_created or student_created:
                         success_count += 1
-                        self.stdout.write(self.style.SUCCESS(f"✅ Configured {username} linked to [{student_id}]"))
+                        if success_count % 50 == 0 or success_count <= 5:
+                            self.stdout.write(self.style.SUCCESS(f"✅ {success_count}/{count} — {username} → [{student_id}]"))
                     else:
                         skipped_count += 1
 
                 except IntegrityError as e:
                     self.stdout.write(self.style.ERROR(f"❌ Error linking {username}: {e}"))
                     
-        self.stdout.write(self.style.SUCCESS(f"\n🚀 Seed operation complete! Generated/Linked {success_count} | Skipped (Already existed) {skipped_count}"))
+        self.stdout.write(self.style.SUCCESS(f"\n🚀 Seed complete! Created {success_count} | Skipped {skipped_count} | Total {count}"))

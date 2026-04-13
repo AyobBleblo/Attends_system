@@ -84,6 +84,15 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
+if os.getenv('USE_FAST_HASHER', 'False') == 'True':
+    PASSWORD_HASHERS = [
+        'django.contrib.auth.hashers.MD5PasswordHasher',
+        'django.contrib.auth.hashers.PBKDF2PasswordHasher',
+        'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
+        'django.contrib.auth.hashers.Argon2PasswordHasher',
+        'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
+    ]
+
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
 USE_I18N = True
