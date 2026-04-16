@@ -11,7 +11,7 @@ import { Trash2 } from 'lucide-react';
  */
 const SKELETON_ROWS = 5;
 
-const DataTable = ({ columns = [], data = [], loading = false, onDelete, emptyText = 'No data found.' }) => (
+const DataTable = ({ columns = [], data = [], loading = false, onDelete, actions, emptyText = 'No data found.' }) => (
   <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700">
     <table className="w-full text-sm text-left">
       <thead>
@@ -24,7 +24,7 @@ const DataTable = ({ columns = [], data = [], loading = false, onDelete, emptyTe
               {col.label}
             </th>
           ))}
-          <th className="px-4 py-3 w-12" />
+          <th className="px-4 py-3 w-12 text-right">Actions</th>
         </tr>
       </thead>
       <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -37,7 +37,7 @@ const DataTable = ({ columns = [], data = [], loading = false, onDelete, emptyTe
                 </td>
               ))}
               <td className="px-4 py-3">
-                <div className="skeleton h-7 w-7 rounded" />
+                <div className="skeleton h-7 w-7 rounded ml-auto" />
               </td>
             </tr>
           ))
@@ -64,11 +64,12 @@ const DataTable = ({ columns = [], data = [], loading = false, onDelete, emptyTe
                   {col.render ? col.render(item) : (item[col.key] ?? '—')}
                 </td>
               ))}
-              <td className="px-4 py-3">
+              <td className="px-4 py-3 flex gap-2 justify-end">
+                {actions && actions(item)}
                 {onDelete && (
                   <button
                     onClick={() => onDelete(item.id)}
-                    className="btn-danger p-1.5 rounded-lg"
+                    className="btn-danger p-1.5 rounded-lg text-red-600 hover:text-white"
                     title="Delete"
                   >
                     <Trash2 size={15} />

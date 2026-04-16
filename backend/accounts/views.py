@@ -1,8 +1,9 @@
 from rest_framework.views import APIView
-from rest_framework import viewsets
+from rest_framework import viewsets, filters
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
+from rest_framework.decorators import action
 from .models import Student, Professor
 from .serializers import StudentSerializer, ProfessorSerializer, AdminStudentSerializer, AdminProfessorSerializer
 from courses.models import Course, CourseAssignment
@@ -15,12 +16,58 @@ class AdminStudentViewSet(viewsets.ModelViewSet):
     queryset = Student.objects.all()
     serializer_class = AdminStudentSerializer
     permission_classes = [IsAdminUser]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['name', 'student_id', 'user__username', 'user__email']
+
+    @action(detail=True, methods=['post'])
+    def reset_password(self, request, pk=None):
+        student = self.get_object()
+        if student.user:
+            student.user.set_password('123456')
+            student.user.save()
+            return Response({'status': 'Password reset to default successfully'})
+        return Response({'error': 'No user account associated with this student'}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def set_custom_password(self, request, pk=None):
+        student = self.get_object()
+        password = request.data.get('password')
+        if not password:
+            return Response({'error': 'Password is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if student.user:
+            student.user.set_password(password)
+            student.user.save()
+            return Response({'status': 'Custom password set successfully'})
+        return Response({'error': 'No user account associated with this student'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class AdminProfessorViewSet(viewsets.ModelViewSet):
     queryset = Professor.objects.all()
     serializer_class = AdminProfessorSerializer
     permission_classes = [IsAdminUser]
+    filter_backends = [filters.SearchFilter]
+    search_fields = ['name', 'professor_id', 'user__username', 'user__email']
+
+    @action(detail=True, methods=['post'])
+    def reset_password(self, request, pk=None):
+        professor = self.get_object()
+        if professor.user:
+            professor.user.set_password('123456')
+            professor.user.save()
+            return Response({'status': 'Password reset to default successfully'})
+        return Response({'error': 'No user account associated with this professor'}, status=status.HTTP_400_BAD_REQUEST)
+
+    @action(detail=True, methods=['post'])
+    def set_custom_password(self, request, pk=None):
+        professor = self.get_object()
+        password = request.data.get('password')
+        if not password:
+            return Response({'error': 'Password is required'}, status=status.HTTP_400_BAD_REQUEST)
+        if professor.user:
+            professor.user.set_password(password)
+            professor.user.save()
+            return Response({'status': 'Custom password set successfully'})
+        return Response({'error': 'No user account associated with this professor'}, status=status.HTTP_400_BAD_REQUEST)
 
 
 class StudentListView(APIView):
@@ -128,3 +175,23 @@ class MeView(APIView):
 
         print(f"DEBUG: Returning 400 for user {user.username} (id: {user.id}). is_staff: {user.is_staff}")
         return Response({'error': f'User {user.username} has no associated profile and is not an admin.'}, status=400)
+
+
+class ChangePasswordView(APIView):
+    """Allows authenticated users to change their password."""
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        old_password = request.data.get('old_password')
+        new_password = request.data.get('new_password')
+
+        if not old_password or not new_password:
+            return Response({'error': 'Both old and new passwords are required'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if not user.check_password(old_password):
+            return Response({'error': 'Incorrect old password'}, status=status.HTTP_400_BAD_REQUEST)
+
+        user.set_password(new_password)
+        user.save()
+        return Response({'success': 'Password changed successfully'})

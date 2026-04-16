@@ -1,1 +1,16 @@
 student_major not just the department
+
+ٍSmester Coustomize in aadmin page
+
+Coustomize the rebort for each session for techer and course and student
+
+Coustomize the number of a lecture in a Holi ٍSmester EX: 15 so the student can scann 1once per day and the 15 or 14 per semester
+
+(rebort for spacefic Course and see the all 14 lecture and who is absent and who is present
+ and who is upsent with the date and time and the name of the student 
+ and the name of the course and the name of the professor 
+ and the name of the department and the name of the semester
+ and the total number of lectures and the total number of absent
+ and the total number of present and the with % of the student present in thhis course )
+   
+Enhance the UI in frontend/src/pages/AttendanceReport.jsx

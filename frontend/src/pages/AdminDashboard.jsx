@@ -3,11 +3,12 @@ import { Dialog } from '@headlessui/react';
 import api from '../api/axios';
 import {
   Users, GraduationCap, BookOpen, Link2, ClipboardList,
-  UserPlus, RefreshCw, X, Loader2,
+  UserPlus, RefreshCw, X, Loader2, KeyRound, Search, Unlock
 } from 'lucide-react';
 import StatsBar from '../components/admin/StatsBar';
 import DataTable from '../components/admin/DataTable';
 import NestedAssignModal from '../components/admin/NestedAssignModal';
+import Select from 'react-select';
 
 // ── Tab config ────────────────────────────────────────────────────────────────
 const TABS = [
@@ -30,11 +31,13 @@ const EP = {
 const COLUMNS = {
   students: [
     { key: 'student_id',      label: 'ID' },
+    { key: 'username',        label: 'Username' },
     { key: 'name',            label: 'Name' },
     { key: 'department_name', label: 'Department' },
   ],
   professors: [
     { key: 'professor_id',    label: 'ID' },
+    { key: 'username',        label: 'Username' },
     { key: 'name',            label: 'Name' },
     { key: 'department_name', label: 'Department' },
   ],
@@ -69,8 +72,6 @@ const COLUMNS = {
 };
 
 // ── Utility ───────────────────────────────────────────────────────────────────
-// We now use the 'api' instance from ../api/axios which has the interceptor
-// but we'll add a helper to format errors cleanly.
 const formatError = (err) => {
   if (err.response?.data) {
     const data = err.response.data;
@@ -114,6 +115,11 @@ const AdminDashboard = () => {
   const [formData, setFormData] = useState({});
   const [formError, setFormError] = useState(null);
   const [formLoading, setFormLoading] = useState(false);
+  
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [selectedUser, setSelectedUser] = useState(null); // { id, type: 'students' | 'professors', name }
+  const [customPassword, setCustomPassword] = useState('');
 
   // Relation data for dropdowns
   const [allStudents,   setAllStudents]   = useState([]);
@@ -123,17 +129,27 @@ const AdminDashboard = () => {
   const [allDepartments, setAllDepartments] = useState([]);
 
   // ── Fetch table data ────────────────────────────────────────────────────────
-  const fetchData = useCallback(async (tab) => {
+  const fetchData = useCallback(async (tab, search = searchQuery) => {
     setLoading(true);
     try {
-      const res = await api.get(EP[tab]);
+      const qs = search ? `?search=${encodeURIComponent(search)}` : '';
+      const res = await api.get(`${EP[tab]}${qs}`);
       setData(prev => ({ ...prev, [tab]: res.data }));
     } catch (e) {
       console.error(e);
-      // If unauthorized, the interceptor might handle it, but we log it here
     }
     finally { setLoading(false); }
-  }, []);
+  }, [searchQuery]);
+
+  // Handle Search Debounce
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      fetchData(activeTab, searchQuery);
+    }, 400);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery, activeTab, fetchData]);
+
 
   // ── Fetch stats ─────────────────────────────────────────────────────────────
   const fetchStats = useCallback(async () => {
@@ -173,7 +189,7 @@ const AdminDashboard = () => {
     } catch (e) { console.error(e); }
   }, []);
 
-  useEffect(() => { fetchData(activeTab); fetchStats(); }, [activeTab]);
+  useEffect(() => { fetchStats(); }, []);
   useEffect(() => {
     if (['assignments', 'enrollments'].includes(activeTab)) loadRelations();
   }, [activeTab]);
@@ -192,13 +208,81 @@ const AdminDashboard = () => {
     }
   };
 
+  // ── Handlers for Password Reset ─────────────────────────────────────────────
+  const handleQuickReset = async (item) => {
+    if (!window.confirm(`Reset password to '123456' for ${item.name}?`)) return;
+    try {
+      await api.post(`${EP[activeTab]}${item.id}/reset_password/`);
+      alert(`Password reset successfully for ${item.name}`);
+    } catch (err) {
+      alert(`Error resetting password: ${formatError(err)}`);
+    }
+  };
+
+  const handleSetCustomPassword = async (e) => {
+    e.preventDefault();
+    setFormLoading(true);
+    setFormError(null);
+    try {
+      await api.post(`${EP[selectedUser.type]}${selectedUser.id}/set_custom_password/`, {
+        password: customPassword
+      });
+      setShowPasswordModal(false);
+      setCustomPassword('');
+      alert(`Custom password set successfully for ${selectedUser.name}`);
+    } catch (err) {
+      setFormError(formatError(err));
+    } finally {
+      setFormLoading(false);
+    }
+  };
+
+  const openCustomPasswordModal = (item) => {
+    setSelectedUser({ id: item.id, type: activeTab, name: item.name });
+    setCustomPassword('');
+    setFormError(null);
+    setShowPasswordModal(true);
+  };
+
+  const renderTableActions = (item) => {
+    if (activeTab === 'students' || activeTab === 'professors') {
+      return (
+        <>
+          <button
+            onClick={() => handleQuickReset(item)}
+            className="btn-ghost p-1.5 rounded-lg text-emerald-600 hover:text-white hover:bg-emerald-500 transition-colors"
+            title="Quick Reset Password"
+          >
+            <RefreshCw size={15} />
+          </button>
+          <button
+            onClick={() => openCustomPasswordModal(item)}
+            className="btn-ghost p-1.5 rounded-lg text-amber-600 hover:text-white hover:bg-amber-500 transition-colors"
+            title="Set Custom Password"
+          >
+            <KeyRound size={15} />
+          </button>
+        </>
+      );
+    }
+    return null;
+  };
+
   // ── Create ──────────────────────────────────────────────────────────────────
   const handleCreate = async (e) => {
     e.preventDefault();
     setFormLoading(true);
     setFormError(null);
     try {
-      await api.post(EP[activeTab], formData);
+      if (activeTab === 'enrollments' && Array.isArray(formData.course)) {
+        await Promise.all(
+          formData.course.map(courseId => 
+             api.post(EP[activeTab], { ...formData, course: courseId })
+          )
+        );
+      } else {
+        await api.post(EP[activeTab], formData);
+      }
       setShowModal(false);
       setFormData({});
       fetchData(activeTab);
@@ -216,7 +300,6 @@ const AdminDashboard = () => {
       case 'students':
         return (
           <>
-            <Inp label="Username" name="username" value={formData.username||''} onChange={change} />
             <Inp label="Password" name="password" type="password" value={formData.password||''} onChange={change} />
             <Inp label="Full Name" name="name" value={formData.name||''} onChange={change} />
             <Inp label="Student ID" name="student_id" value={formData.student_id||''} onChange={change} />
@@ -238,22 +321,37 @@ const AdminDashboard = () => {
           <>
             <Inp label="Course Code" name="code" value={formData.code||''} onChange={change} />
             <Inp label="Course Name" name="name" value={formData.name||''} onChange={change} />
-            <Sel label="Department" name="department"
-              options={allDepartments}
-              valKey="id" lblFn={d => d.name} value={formData.department||''} onChange={change}
-            />
+            <Sel label="Department" name="department" options={allDepartments} valKey="id" lblFn={d => d.name} value={formData.department||''} onChange={change} />
           </>
         );
       case 'enrollments':
         return (
-          <>
-            <Sel label="Student" name="student" options={allStudents} valKey="id"
-              lblFn={s => `${s.name} (${s.student_id})`} value={formData.student||''} onChange={change} />
-            <Sel label="Course" name="course" options={allCourses} valKey="id"
-              lblFn={c => `${c.name} (${c.code})`} value={formData.course||''} onChange={change} />
-            <Sel label="Semester" name="semester" options={allSemesters} valKey="id"
-              lblFn={s => s.name} value={formData.semester||''} onChange={change} />
-          </>
+          <div className="space-y-4">
+            <div>
+              <label className="form-label block mb-1">Student</label>
+              <Select
+                options={allStudents.map(s => ({ value: s.id, label: `${s.name} (${s.student_id})` }))}
+                onChange={val => setFormData(f => ({ ...f, student: val?.value }))}
+                value={formData.student ? { value: formData.student, label: allStudents.find(s=>s.id===formData.student)?.name || formData.student } : null}
+                placeholder="Search Student..."
+                menuPortalTarget={document.body}
+                styles={{ menuPortal: base => ({ ...base, zIndex: 9999 }) }}
+              />
+            </div>
+            <div>
+              <label className="form-label block mb-1">Courses (Multiple)</label>
+              <Select
+                isMulti
+                options={allCourses.map(c => ({ value: c.id, label: `${c.name} (${c.code})` }))}
+                onChange={vals => setFormData(f => ({ ...f, course: vals ? vals.map(v => v.value) : [] }))}
+                value={formData.course && Array.isArray(formData.course) ? allCourses.filter(c => formData.course.includes(c.id)).map(c => ({ value: c.id, label: c.name })) : []}
+                placeholder="Search Courses..."
+                menuPortalTarget={document.body}
+                styles={{ menuPortal: base => ({ ...base, zIndex: 9999 }) }}
+              />
+            </div>
+            <Sel label="Semester" name="semester" options={allSemesters} valKey="id" lblFn={s => s.name} value={formData.semester||''} onChange={change} />
+          </div>
         );
       default:
         return null;
@@ -268,13 +366,29 @@ const AdminDashboard = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
       {/* ── Header ── */}
-      <div className="mb-8">
-        <h1 className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
-          Admin Dashboard
-        </h1>
-        <p className="text-slate-500 dark:text-slate-400 mt-1">
-          Manage users, courses, assignments, and enrollments.
-        </p>
+      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+        <div>
+          <h1 className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
+            Admin Dashboard
+          </h1>
+          <p className="text-slate-500 dark:text-slate-400 mt-1">
+            Manage users, courses, assignments, and enrollments.
+          </p>
+        </div>
+
+        {/* Global Search */}
+        <div className="w-full md:w-72 relative">
+          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+            <Search size={18} />
+          </div>
+          <input
+            type="text"
+            className="input pl-10 mb-0 shadow-sm border-slate-200 focus:ring-brand-500"
+            placeholder={`Search ${activeTab}...`}
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
       </div>
 
       {/* ── Stats Bar ── */}
@@ -337,6 +451,7 @@ const AdminDashboard = () => {
           data={data[activeTab]}
           loading={loading}
           onDelete={handleDelete}
+          actions={renderTableActions}
           emptyText={`No ${activeTab} found.`}
         />
       </div>
@@ -345,7 +460,7 @@ const AdminDashboard = () => {
       <Dialog open={showModal} onClose={() => setShowModal(false)} className="relative z-50">
         <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
         <div className="fixed inset-0 flex items-center justify-center p-4">
-          <Dialog.Panel className="card w-full max-w-md p-6 animate-scale-in dark:bg-slate-900">
+          <Dialog.Panel className="card w-full max-w-md p-6 animate-scale-in dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
             <div className="flex items-center justify-between mb-5">
               <Dialog.Title className="text-lg font-bold text-slate-800 dark:text-slate-100">
                 Add {TABS.find(t => t.key === activeTab)?.label.slice(0, -1)}
@@ -365,11 +480,68 @@ const AdminDashboard = () => {
               <button
                 type="submit"
                 disabled={formLoading}
-                className={`btn-primary w-full justify-center ${TAB_COLORS[activeTab]}`}
+                className={`btn-primary w-full justify-center ${TAB_COLORS[activeTab]} border-transparent`}
               >
                 {formLoading ? <Loader2 size={16} className="animate-spin" /> : null}
                 {formLoading ? 'Creating…' : 'Create'}
               </button>
+            </form>
+          </Dialog.Panel>
+        </div>
+      </Dialog>
+
+      {/* ── Custom Password Modal ── */}
+      <Dialog open={showPasswordModal} onClose={() => setShowPasswordModal(false)} className="relative z-50">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm transition-opacity" aria-hidden="true" />
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          <Dialog.Panel className="card w-full max-w-sm p-6 animate-scale-in dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl">
+            <div className="flex items-center justify-between mb-5">
+              <Dialog.Title className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <Unlock size={18} className="text-amber-500" />
+                Set Password
+              </Dialog.Title>
+              <button onClick={() => setShowPasswordModal(false)} className="btn-ghost p-1.5">
+                <X size={18} />
+              </button>
+            </div>
+
+            {selectedUser && (
+              <p className="text-sm text-slate-500 dark:text-slate-400 mb-4">
+                Set a new custom password for <strong className="text-slate-800 dark:text-slate-200">{selectedUser.name}</strong>.
+              </p>
+            )}
+
+            <form onSubmit={handleSetCustomPassword} className="space-y-4">
+              <Inp
+                label="New Password"
+                name="customPassword"
+                type="password"
+                value={customPassword}
+                onChange={(e) => setCustomPassword(e.target.value)}
+                required
+              />
+              {formError && (
+                <p className="text-xs text-red-600 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2 animate-slide-down">
+                  {formError}
+                </p>
+              )}
+              <div className="flex gap-2 justify-end mt-6">
+                <button
+                  type="button"
+                  onClick={() => setShowPasswordModal(false)}
+                  className="btn-ghost"
+                  disabled={formLoading}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={formLoading || !customPassword.trim()}
+                  className="btn-primary bg-amber-500 hover:bg-amber-600 border-transparent text-white justify-center min-w-[100px]"
+                >
+                  {formLoading ? <Loader2 size={16} className="animate-spin" /> : 'Save'}
+                </button>
+              </div>
             </form>
           </Dialog.Panel>
         </div>

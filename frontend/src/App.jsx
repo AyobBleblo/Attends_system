@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { BrowserRouter, Routes, Route, Link, Navigate, useNavigate } from 'react-router-dom';
-import { Moon, Sun, LogOut, GraduationCap } from 'lucide-react';
+import { Moon, Sun, LogOut, GraduationCap, KeyRound } from 'lucide-react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 
 import LoginPage from './pages/LoginPage';
@@ -10,6 +10,7 @@ import StudentScan from './pages/StudentScan';
 import AttendanceReport from './pages/AttendanceReport';
 import AdminDashboard from './pages/AdminDashboard';
 import CourseDetails from './pages/CourseDetails';
+import ChangePasswordModal from './components/shared/ChangePasswordModal';
 
 // ── Protected Route: redirects to /login if not authenticated ──
 function ProtectedRoute({ children }) {
@@ -37,6 +38,7 @@ function Navbar({ theme, toggleTheme }) {
   const { user, logout } = useAuth();
   const navigate = useNavigate();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [passwordModalOpen, setPasswordModalOpen] = useState(false);
 
   const handleLogout = () => { logout(); navigate('/login'); setMenuOpen(false); };
 
@@ -80,11 +82,16 @@ function Navbar({ theme, toggleTheme }) {
             {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
           </button>
 
-          {/* Logout (desktop) */}
+          {/* Logout & Password (desktop) */}
           {user && (
-            <button onClick={handleLogout} className="hidden md:inline-flex btn-ghost gap-2 text-sm">
-              <LogOut size={16} /> Logout
-            </button>
+            <div className="hidden md:flex items-center">
+              <button onClick={() => setPasswordModalOpen(true)} className="btn-ghost gap-2 text-sm mr-1">
+                <KeyRound size={16} /> Password
+              </button>
+              <button onClick={handleLogout} className="btn-ghost gap-2 text-sm text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-900/20">
+                <LogOut size={16} /> Logout
+              </button>
+            </div>
           )}
 
           {/* Hamburger (mobile) */}
@@ -114,6 +121,10 @@ function Navbar({ theme, toggleTheme }) {
           {user && (
             <>
               <p className="text-xs text-slate-400 px-3 py-1">Signed in as {user.name}</p>
+              <button onClick={() => { setPasswordModalOpen(true); setMenuOpen(false); }}
+                className="w-full text-left py-2 px-3 rounded-lg text-sm font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center gap-2">
+                <KeyRound size={15} /> Change Password
+              </button>
               <button onClick={handleLogout}
                 className="w-full text-left py-2 px-3 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 flex items-center gap-2">
                 <LogOut size={15} /> Logout
@@ -122,6 +133,9 @@ function Navbar({ theme, toggleTheme }) {
           )}
         </div>
       )}
+
+      {/* Password Modal */}
+      <ChangePasswordModal isOpen={passwordModalOpen} onClose={() => setPasswordModalOpen(false)} />
     </nav>
   );
 }

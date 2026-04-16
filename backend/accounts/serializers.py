@@ -24,7 +24,7 @@ class ProfessorSerializer(serializers.ModelSerializer):
 
 
 class AdminStudentSerializer(serializers.ModelSerializer):
-    username = serializers.CharField(write_only=True)
+    username = serializers.CharField(write_only=True, required=False)
     password = serializers.CharField(write_only=True)
     department_name = serializers.CharField(source='department.name', read_only=True)
 
@@ -43,12 +43,23 @@ class AdminStudentSerializer(serializers.ModelSerializer):
         return value
 
     def create(self, validated_data):
-        username = validated_data.pop('username')
+        username = validated_data.pop('username', None)
+        if not username:
+            username = validated_data.get('student_id')
+        
+        if User.objects.filter(username=username).exists():
+            raise serializers.ValidationError({"username": "A user with this username (or generated from student ID) already exists."})
+            
         password = validated_data.pop('password')
         with transaction.atomic():
             user = User.objects.create_user(username=username, password=password)
             student = Student.objects.create(user=user, **validated_data)
         return student
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        ret['username'] = instance.user.username if instance.user else None
+        return ret
 
     def update(self, instance, validated_data):
         username = validated_data.pop('username', None)
@@ -88,6 +99,11 @@ class AdminProfessorSerializer(serializers.ModelSerializer):
             user = User.objects.create_user(username=username, password=password)
             professor = Professor.objects.create(user=user, **validated_data)
         return professor
+
+    def to_representation(self, instance):
+        ret = super().to_representation(instance)
+        ret['username'] = instance.user.username if instance.user else None
+        return ret
 
     def update(self, instance, validated_data):
         username = validated_data.pop('username', None)

@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { LogIn, GraduationCap, BookOpen, Lock, User } from 'lucide-react';
+import { LogIn, Lock, User } from 'lucide-react';
+import { motion } from 'framer-motion';
 
 function LoginPage() {
   const { login } = useAuth();
@@ -22,7 +23,7 @@ function LoginPage() {
       } else if (userData.role === 'student') {
         navigate('/student');
       } else {
-        setError('Your account is not linked to a professor or student profile. Please contact the admin.');
+        setError('Account not linked to a profile. Please contact administration.');
       }
     } catch (err) {
       setError(err.response?.data?.detail || 'Invalid username or password.');
@@ -32,185 +33,118 @@ function LoginPage() {
   };
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      display: 'flex',
-      alignItems: 'center',
-      justifyContent: 'center',
-      background: 'var(--bg-main)',
-      padding: '2rem',
-    }}>
-      <div style={{ width: '100%', maxWidth: '420px' }}>
-        {/* Logo / Header */}
-        <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
-          <div style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            width: '72px',
-            height: '72px',
-            borderRadius: '20px',
-            background: 'var(--accent)',
-            marginBottom: '1.25rem',
-            boxShadow: '0 8px 24px rgba(99,102,241,0.35)',
-          }}>
-            <GraduationCap size={36} color="#fff" />
+    <div className="min-h-screen flex items-center justify-center bg-[#f8f9fa] p-6 relative overflow-hidden font-sans">
+      {/* Background Gradients */}
+      <div className="absolute inset-0 bg-gradient-to-br from-[#ffffff] via-[#f2f4f7] to-[#e9ecef] z-0"></div>
+      
+      {/* Ambient Moving Orbs */}
+      <motion.div 
+        animate={{ x: [0, 40, -40, 0], y: [0, 20, -20, 0] }}
+        transition={{ duration: 20, repeat: Infinity, ease: "linear" }}
+        className="absolute top-[-10%] left-[-10%] w-[40rem] h-[40rem] bg-[#D4AF37] rounded-full mix-blend-multiply filter blur-[120px] opacity-[0.06] pointer-events-none z-0"
+      />
+      <motion.div 
+        animate={{ x: [0, -30, 30, 0], y: [0, -30, 30, 0] }}
+        transition={{ duration: 25, repeat: Infinity, ease: "linear" }}
+        className="absolute bottom-[-10%] right-[-10%] w-[30rem] h-[30rem] bg-indigo-100 rounded-full mix-blend-multiply filter blur-[120px] opacity-[0.15] pointer-events-none z-0"
+      />
+
+      <motion.div 
+        className="w-full max-w-md relative z-10"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.8 }}
+      >
+        {/* Header Section with Prominent Logo */}
+        <div className="text-center mb-10 flex flex-col items-center">
+          <div className="w-120 h-60 mb-4 relative z-10">
+            <img 
+              src="/Alarab_logo.png" 
+              alt="University Logo" 
+              className="w-full h-full object-contain filter drop-shadow-[0_4px_6px_rgba(0,0,0,0.05)]" 
+            />
           </div>
-          <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 700, color: 'var(--text-main)' }}>
-            UniAttend
+          <h1 className="text-3xl font-black text-[#1a1c20] tracking-tighter uppercase">
+            University Portal
           </h1>
-          <p style={{ margin: '0.5rem 0 0', color: 'var(--text-muted)', fontSize: '0.95rem' }}>
-            Sign in to your account
-          </p>
         </div>
 
-        <div className="card" style={{ padding: '2rem' }}>
+        {/* Login Card */}
+        <div className="bg-white/90 backdrop-blur-2xl border border-white rounded-3xl shadow-[0_30px_70px_rgba(0,0,0,0.08),0_0_40px_rgba(212,175,55,0.03)] p-10 relative">
+          
+          <h2 className="text-xl font-bold text-[#1a1c20] mb-1 text-center">Welcome Back</h2>
+          <p className="text-gray-500 text-sm text-center mb-10">Sign in to access your dashboard</p>
+
           {error && (
-            <div style={{
-              padding: '0.875rem 1rem',
-              borderRadius: '8px',
-              marginBottom: '1.5rem',
-              background: '#fde8e8',
-              color: '#9b1c1c',
-              border: '1px solid #f98080',
-              fontSize: '0.9rem',
-            }}>
-              ❌ {error}
-            </div>
+            <motion.div 
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              className="px-4 py-3 rounded-xl mb-6 bg-red-50 border border-red-100 text-red-600 text-[13px] flex items-center"
+            >
+              <span className="mr-2">⚠️</span> {error}
+            </motion.div>
           )}
 
           <form onSubmit={handleSubmit}>
-            <div style={{ marginBottom: '1.25rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+            {/* Username Field */}
+            <div className="mb-6 group">
+              <label className="block mb-2 text-[11px] font-bold text-gray-400 tracking-[0.2em] uppercase ml-1">
                 Username
               </label>
-              <div style={{ position: 'relative' }}>
-                <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
-                  <User size={16} />
+              <div className="relative">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[#D4AF37] transition-colors">
+                  <User size={18} />
                 </div>
                 <input
-                  id="login-username"
-                  className="input"
+                  className="w-full bg-gray-50/50 border border-gray-100 rounded-xl py-4 pl-12 pr-4 text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#D4AF37]/40 focus:bg-white focus:ring-4 focus:ring-[#D4AF37]/5 transition-all duration-300"
                   type="text"
                   placeholder="Enter your username"
                   value={username}
                   onChange={(e) => setUsername(e.target.value)}
                   required
-                  style={{ paddingLeft: '2.5rem', marginBottom: 0 }}
                 />
               </div>
             </div>
 
-            <div style={{ marginBottom: '2rem' }}>
-              <label style={{ display: 'block', marginBottom: '0.5rem', fontWeight: '600', fontSize: '0.9rem', color: 'var(--text-main)' }}>
+            {/* Password Field */}
+            <div className="mb-10 group">
+              <label className="block mb-2 text-[11px] font-bold text-gray-400 tracking-[0.2em] uppercase ml-1">
                 Password
               </label>
-              <div style={{ position: 'relative' }}>
-                <div style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: 'var(--text-muted)' }}>
-                  <Lock size={16} />
+              <div className="relative">
+                <div className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 group-focus-within:text-[#D4AF37] transition-colors">
+                  <Lock size={18} />
                 </div>
                 <input
-                  id="login-password"
-                  className="input"
+                  className="w-full bg-gray-50/50 border border-gray-100 rounded-xl py-4 pl-12 pr-4 text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#D4AF37]/40 focus:bg-white focus:ring-4 focus:ring-[#D4AF37]/5 transition-all duration-300"
                   type="password"
                   placeholder="Enter your password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={(e) => setPassword(e.target.value)} 
                   required
-                  style={{ paddingLeft: '2.5rem', marginBottom: 0 }}
                 />
               </div>
             </div>
 
-            <button
-              id="login-submit"
+            {/* Gold Action Button */}
+            <motion.button
+              whileHover={{ scale: 1.01, translateY: -2 }}
+              whileTap={{ scale: 0.98 }}
               type="submit"
-              className="btn btn-success"
-              style={{ width: '100%', justifyContent: 'center', gap: '0.5rem', padding: '0.875rem' }}
+              className="w-full bg-[#D4AF37] hover:bg-[#C19A2E] text-white font-bold text-sm tracking-widest uppercase py-4.5 rounded-xl flex items-center justify-center gap-3 transition-all duration-300 shadow-xl shadow-[#D4AF37]/30 disabled:opacity-50"
               disabled={loading}
             >
-              <LogIn size={18} />
-              {loading ? 'Signing in...' : 'Sign In'}
-            </button>
+              <LogIn size={20} />
+              <span>{loading ? 'Authenticating...' : 'Sign In'}</span>
+            </motion.button>
           </form>
         </div>
-
-        {/* Demo Credentials — clickable to auto-fill */}
-        <div style={{ marginTop: '1.5rem' }}>
-          <p style={{ textAlign: 'center', fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '0.6rem' }}>
-            🧪 Demo accounts — click any card to auto-fill login
-          </p>
-
-          {/* Professors row */}
-          <div style={{ marginBottom: '0.6rem' }}>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--accent)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <BookOpen size={11} /> Professors — password: Prof@1234
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem' }}>
-              {[
-                { label: 'Dr. Ahmed', username: 'prof_ahmed', courses: 'Math, Programming' },
-                { label: 'Dr. Sara',  username: 'prof_sara',  courses: 'Physics' },
-              ].map(acc => (
-                <button
-                  key={acc.username}
-                  id={`quick-login-${acc.username}`}
-                  onClick={() => { setUsername(acc.username); setPassword('Prof@1234'); setError(''); }}
-                  className="card"
-                  style={{
-                    textAlign: 'left', cursor: 'pointer', padding: '0.65rem 0.85rem',
-                    border: username === acc.username ? '2px solid var(--accent)' : '2px solid var(--border)',
-                    background: username === acc.username ? 'rgba(99,102,241,0.07)' : 'var(--card-bg)',
-                    transition: 'border-color 0.15s, background 0.15s', borderRadius: '9px',
-                  }}
-                  onMouseEnter={e => { if (username !== acc.username) e.currentTarget.style.borderColor = 'var(--accent)'; }}
-                  onMouseLeave={e => { if (username !== acc.username) e.currentTarget.style.borderColor = 'var(--border)'; }}
-                >
-                  <div style={{ fontWeight: 700, fontSize: '0.82rem', color: 'var(--text-main)' }}>{acc.label}</div>
-                  <div style={{ fontFamily: 'monospace', fontSize: '0.76rem', color: 'var(--accent)', marginTop: '0.1rem' }}>{acc.username}</div>
-                  <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>📚 {acc.courses}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Students row */}
-          <div>
-            <div style={{ fontSize: '0.72rem', fontWeight: 700, color: 'var(--success)', textTransform: 'uppercase', letterSpacing: '0.07em', marginBottom: '0.4rem', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
-              <GraduationCap size={11} /> Students — password: Student@1234
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.4rem' }}>
-              {[
-                { label: 'Ali',   username: 'student_ali',   courses: 'Math, Physics' },
-                { label: 'Noor',  username: 'student_nour',  courses: 'Math, Programming' },
-                { label: 'Omar',  username: 'student_omar',  courses: 'Physics, Programming' },
-              ].map(acc => (
-                <button
-                  key={acc.username}
-                  id={`quick-login-${acc.username}`}
-                  onClick={() => { setUsername(acc.username); setPassword('Student@1234'); setError(''); }}
-                  className="card"
-                  style={{
-                    textAlign: 'left', cursor: 'pointer', padding: '0.6rem 0.75rem',
-                    border: username === acc.username ? '2px solid var(--success)' : '2px solid var(--border)',
-                    background: username === acc.username ? 'rgba(16,185,129,0.07)' : 'var(--card-bg)',
-                    transition: 'border-color 0.15s, background 0.15s', borderRadius: '9px',
-                  }}
-                  onMouseEnter={e => { if (username !== acc.username) e.currentTarget.style.borderColor = 'var(--success)'; }}
-                  onMouseLeave={e => { if (username !== acc.username) e.currentTarget.style.borderColor = 'var(--border)'; }}
-                >
-                  <div style={{ fontWeight: 700, fontSize: '0.8rem', color: 'var(--text-main)' }}>{acc.label}</div>
-                  <div style={{ fontFamily: 'monospace', fontSize: '0.72rem', color: 'var(--success)', marginTop: '0.1rem' }}>{acc.username}</div>
-                  <div style={{ fontSize: '0.67rem', color: 'var(--text-muted)', marginTop: '0.1rem' }}>{acc.courses}</div>
-                </button>
-              ))}
-            </div>
-          </div>
-
-          <p style={{ textAlign: 'center', fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '0.6rem' }}>
-            Admin panel: <code>admin</code> / <code>Admin@1234</code> at <code>/admin/</code>
-          </p>
-        </div>
-      </div>
+        
+        {/* Footer Content */}
+        <p className="text-center mt-12 text-gray-400 text-xs tracking-wide">
+          &copy; 2026 UNIVERSITY OF TECHNOLOGY. ALL RIGHTS RESERVED.
+        </p>
+      </motion.div>
     </div>
   );
 }
