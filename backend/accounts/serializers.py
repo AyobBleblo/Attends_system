@@ -11,7 +11,7 @@ class StudentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Student
-        fields = ['id', 'student_id', 'name', 'department', 'department_name', 'username']
+        fields = ['id', 'student_id', 'name', 'department', 'department_name', 'student_major', 'username']
 
 
 class ProfessorSerializer(serializers.ModelSerializer):
@@ -30,7 +30,7 @@ class AdminStudentSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Student
-        fields = ['id', 'student_id', 'name', 'department', 'department_name', 'username', 'password']
+        fields = ['id', 'student_id', 'name', 'department', 'department_name', 'student_major', 'username', 'password']
 
     def validate_username(self, value):
         if User.objects.filter(username=value).exists():

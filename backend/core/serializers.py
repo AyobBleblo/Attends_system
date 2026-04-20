@@ -11,4 +11,4 @@ class DepartmentSerializer(serializers.ModelSerializer):
 class SemesterSerializer(serializers.ModelSerializer):
     class Meta:
         model = Semester
-        fields = ['id', 'name', 'start_date', 'end_date', 'is_active']
+        fields = ['id', 'name', 'start_date', 'end_date', 'is_active', 'total_lectures']

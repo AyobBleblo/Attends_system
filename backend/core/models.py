@@ -1,4 +1,5 @@
 from django.db import models
+from django.utils.translation import gettext_lazy as _
 
 
 class Department(models.Model):
@@ -16,11 +17,15 @@ class Department(models.Model):
 
 
 class Semester(models.Model):
-    """An academic semester with start/end dates."""
+    """An academic semester with start/end dates and a lecture quota per course."""
     name = models.CharField(max_length=100)
     start_date = models.DateField()
     end_date = models.DateField()
     is_active = models.BooleanField(default=False, db_index=True)
+    total_lectures = models.PositiveSmallIntegerField(
+        default=15,
+        help_text='Maximum number of lectures per course in this semester (used for attendance quota enforcement and reporting).'
+    )
 
     class Meta:
         ordering = ['-start_date']
@@ -35,3 +40,39 @@ class Semester(models.Model):
 
     def __str__(self):
         return self.name
+
+
+class Notification(models.Model):
+    """
+    In-app notification record for a professor.
+    Created by the LectureTrackingService when a professor
+    hits 100% lecture completion (congratulation) or falls
+    below the warning threshold near the semester end (warning).
+    """
+    class NotificationType(models.TextChoices):
+        CONGRATULATION = 'congratulation', _('Congratulation')
+        WARNING        = 'warning',        _('Warning')
+
+    professor    = models.ForeignKey(
+        'accounts.Professor',
+        on_delete=models.CASCADE,
+        related_name='notifications',
+    )
+    message          = models.TextField()
+    notification_type = models.CharField(
+        max_length=20,
+        choices=NotificationType.choices,
+    )
+    is_read      = models.BooleanField(default=False, db_index=True)
+    created_at   = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'Notification'
+        verbose_name_plural = 'Notifications'
+        indexes = [
+            models.Index(fields=['professor', 'is_read']),
+        ]
+
+    def __str__(self):
+        return f"[{self.notification_type}] {self.professor} — {self.created_at:%Y-%m-%d}"

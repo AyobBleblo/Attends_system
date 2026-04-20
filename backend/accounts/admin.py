@@ -4,9 +4,9 @@ from .models import Student, Professor
 
 @admin.register(Student)
 class StudentAdmin(admin.ModelAdmin):
-    list_display = ('student_id', 'name', 'department')
+    list_display = ('student_id', 'name', 'student_major', 'department')
     list_filter = ('department',)
-    search_fields = ('student_id', 'name')
+    search_fields = ('student_id', 'name', 'student_major')
     ordering = ('name',)
 
 

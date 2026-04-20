@@ -1,7 +1,8 @@
 from rest_framework.views import APIView
+from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework import status
-from rest_framework.permissions import AllowAny
+from rest_framework.permissions import AllowAny, IsAdminUser
 from .models import Department, Semester
 from .serializers import DepartmentSerializer, SemesterSerializer
 from accounts.models import Student, Professor
@@ -59,3 +60,9 @@ class StatsView(APIView):
             'total_departments': Department.objects.count(),
             'active_semester': semester_name,
         })
+
+
+class AdminSemesterViewSet(viewsets.ModelViewSet):
+    queryset = Semester.objects.all().order_by('-start_date')
+    serializer_class = SemesterSerializer
+    permission_classes = [IsAdminUser]

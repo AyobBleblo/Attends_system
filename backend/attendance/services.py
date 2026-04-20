@@ -8,6 +8,7 @@ from attendance.models import Session, Enrollment, Attendance
 
 def record_attendance(student_id: str, qr_token: str) -> dict:
     now = timezone.now()
+    today = now.date()
 
     # ── EARLY EXIT: Fast indexed validation before any heavy logic ────────
     #    These EXISTS queries hit indexed columns and return in < 1ms.
@@ -51,6 +52,36 @@ def record_attendance(student_id: str, qr_token: str) -> dict:
     if not is_assigned:
         return {'success': False, 'error': 'Professor is not assigned to this course.'}
 
+    # ── VALIDATION 1: One scan per day ────────────────────────────────────
+    # The DB-level unique_together ('student', 'course', 'date') already enforces
+    # this at the integrity level, but we pre-check here for a clean error message.
+    already_scanned_today = Attendance.objects.filter(
+        student_id=student.pk,
+        course_id=session.course_id,
+        date=today,
+    ).exists()
+    if already_scanned_today:
+        return {
+            'success': False,
+            'error': 'You have already scanned your attendance for this course today. Only one scan per day is allowed.'
+        }
+
+    # ── VALIDATION 2: Total scans ≤ semester lecture quota ────────────────
+    total_lectures_quota = active_semester.total_lectures
+    total_scans_so_far = Attendance.objects.filter(
+        student_id=student.pk,
+        course_id=session.course_id,
+        session__semester_id=active_semester.pk,
+    ).count()
+    if total_scans_so_far >= total_lectures_quota:
+        return {
+            'success': False,
+            'error': (
+                f'You have reached the maximum attendance limit for this course '
+                f'({total_lectures_quota} lectures). No further scans are allowed.'
+            )
+        }
+
     # 5. Create the Attendance record (atomic block keeps connection clean on IntegrityError)
     try:
         with transaction.atomic():
@@ -63,5 +94,7 @@ def record_attendance(student_id: str, qr_token: str) -> dict:
     return {
         'success': True,
         'message': f'Attendance recorded for {student.name}.',
-        'attendance_id': attendance.id
+        'attendance_id': attendance.id,
+        'scans_used': total_scans_so_far + 1,
+        'scans_remaining': total_lectures_quota - (total_scans_so_far + 1),
     }

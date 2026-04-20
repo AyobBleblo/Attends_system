@@ -3,7 +3,7 @@ import { Dialog } from '@headlessui/react';
 import api from '../api/axios';
 import {
   Users, GraduationCap, BookOpen, Link2, ClipboardList,
-  UserPlus, RefreshCw, X, Loader2, KeyRound, Search, Unlock
+  UserPlus, RefreshCw, X, Loader2, KeyRound, Search, Unlock, Calendar
 } from 'lucide-react';
 import StatsBar from '../components/admin/StatsBar';
 import DataTable from '../components/admin/DataTable';
@@ -17,6 +17,7 @@ const TABS = [
   { key: 'courses',     label: 'Courses',     icon: BookOpen },
   { key: 'assignments', label: 'Assignments', icon: Link2 },
   { key: 'enrollments', label: 'Enrollments', icon: ClipboardList },
+  { key: 'semesters',   label: 'Semesters',   icon: Calendar },
 ];
 
 const EP = {
@@ -25,6 +26,7 @@ const EP = {
   courses:     'admin/courses/',
   assignments: 'admin/assignments/',
   enrollments: 'admin/enrollments/',
+  semesters:   'admin/semesters/',
 };
 
 // ── Column definitions per tab ────────────────────────────────────────────────
@@ -69,6 +71,17 @@ const COLUMNS = {
       render: item => item.semester_name || item.semester,
     },
   ],
+  semesters: [
+    { key: 'name', label: 'Name' },
+    { key: 'start_date', label: 'Start Date' },
+    { key: 'end_date', label: 'End Date' },
+    { key: 'total_lectures', label: 'Total Lectures' },
+    {
+      key: 'is_active',
+      label: 'Active',
+      render: item => item.is_active ? 'Yes' : 'No',
+    },
+  ],
 };
 
 // ── Utility ───────────────────────────────────────────────────────────────────
@@ -106,7 +119,7 @@ const Sel = ({ label, name, options, valKey = 'id', lblFn, value, onChange }) =>
 // ── Main Component ────────────────────────────────────────────────────────────
 const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState('students');
-  const [data, setData] = useState({ students: [], professors: [], courses: [], assignments: [], enrollments: [] });
+  const [data, setData] = useState({ students: [], professors: [], courses: [], assignments: [], enrollments: [], semesters: [] });
   const [loading, setLoading] = useState(false);
   const [statsLoading, setStatsLoading] = useState(true);
   const [counts, setCounts] = useState({});
@@ -300,10 +313,11 @@ const AdminDashboard = () => {
       case 'students':
         return (
           <>
-            <Inp label="Password" name="password" type="password" value={formData.password||''} onChange={change} />
-            <Inp label="Full Name" name="name" value={formData.name||''} onChange={change} />
             <Inp label="Student ID" name="student_id" value={formData.student_id||''} onChange={change} />
+            <Inp label="Full Name" name="name" value={formData.name||''} onChange={change} />
+            <Inp label="Major/Specialization" name="student_major" value={formData.student_major||''} required={false} onChange={change} />
             <Sel label="Department" name="department" options={allDepartments} valKey="id" lblFn={d => d.name} value={formData.department||''} onChange={change} />
+            <Inp label="Password" name="password" type="password" value={formData.password||''} onChange={change} />
           </>
         );
       case 'professors':
@@ -353,6 +367,19 @@ const AdminDashboard = () => {
             <Sel label="Semester" name="semester" options={allSemesters} valKey="id" lblFn={s => s.name} value={formData.semester||''} onChange={change} />
           </div>
         );
+      case 'semesters':
+        return (
+          <>
+            <Inp label="Name" name="name" value={formData.name||''} onChange={change} />
+            <Inp label="Start Date" name="start_date" type="date" value={formData.start_date||''} onChange={change} />
+            <Inp label="End Date" name="end_date" type="date" value={formData.end_date||''} onChange={change} />
+            <Inp label="Total Lectures" name="total_lectures" type="number" value={formData.total_lectures||'15'} onChange={change} />
+            <div className="flex items-center gap-2 mt-4 ml-1">
+               <input type="checkbox" id="is_active" name="is_active" checked={!!formData.is_active} onChange={e => setFormData(f => ({ ...f, is_active: e.target.checked }))} className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" />
+               <label htmlFor="is_active" className="text-sm font-semibold text-slate-700 dark:text-slate-300">Set as Active Semester</label>
+            </div>
+          </>
+        );
       default:
         return null;
     }
@@ -360,7 +387,7 @@ const AdminDashboard = () => {
 
   const TAB_COLORS = {
     students: 'bg-indigo-500', professors: 'bg-violet-500',
-    courses: 'bg-sky-500', assignments: 'bg-amber-500', enrollments: 'bg-emerald-500',
+    courses: 'bg-sky-500', assignments: 'bg-amber-500', enrollments: 'bg-emerald-500', semesters: 'bg-rose-500'
   };
 
   return (

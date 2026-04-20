@@ -1,7 +1,11 @@
 import base64
 import io
+import threading
 import qrcode
 import csv
+import uuid
+from datetime import timedelta
+from django.utils.timezone import now
 from django.db.models.functions import TruncDate
 from django.http import HttpResponse
 from rest_framework.views import APIView
@@ -59,22 +63,43 @@ class SessionCreateView(APIView):
 
     def post(self, request):
         professor_id = request.data.get('professor_id')
-        course_id = request.data.get('course_id')
-        
+        course_id    = request.data.get('course_id')
+
         try:
             professor = Professor.objects.get(pk=professor_id)
-            course = Course.objects.get(pk=course_id)
-            semester = Semester.objects.get(is_active=True)
-            
+            course    = Course.objects.get(pk=course_id)
+            semester  = Semester.objects.get(is_active=True)
+
             session = Session.objects.create(
                 professor=professor,
                 course=course,
-                semester=semester
+                semester=semester,
             )
             serializer = SessionSerializer(session)
+
+            # ── Fire compliance check in a background thread ──────────────────
+            # We do NOT block the response. The tracking service runs after the
+            # response is already on its way back to the professor's browser.
+            assignment = CourseAssignment.objects.filter(
+                professor=professor,
+                course=course,
+                semester=semester,
+            ).select_related('professor', 'course', 'semester').first()
+
+            if assignment:
+                from courses.tracking_service import check_and_notify  # local import avoids circular dep
+                t = threading.Thread(
+                    target=check_and_notify,
+                    args=(assignment,),
+                    daemon=True,
+                )
+                t.start()
+
             return Response(serializer.data, status=status.HTTP_201_CREATED)
+
         except Exception as e:
             return Response({'error': str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 class SessionQRView(APIView):
@@ -93,6 +118,20 @@ class SessionQRView(APIView):
             img_b64 = base64.b64encode(buffer.getvalue()).decode()
             
             return Response({'qr_code': f"data:image/png;base64,{img_b64}"})
+        except Session.DoesNotExist:
+            return Response({'error': 'Session not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class SessionRefreshQRView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request, session_id):
+        try:
+            session = Session.objects.get(pk=session_id)
+            session.qr_token = str(uuid.uuid4())
+            session.qr_expires_at = now() + timedelta(minutes=15)
+            session.save()
+            return Response({'qr_token': session.qr_token})
         except Session.DoesNotExist:
             return Response({'error': 'Session not found'}, status=status.HTTP_404_NOT_FOUND)
 
@@ -162,6 +201,208 @@ class AttendanceReportView(APIView):
                 'total_enrollments': total_enrollments,
                 'total_records': queryset.count()
             }
+        })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NEW: Session Report — filterable by session, teacher, course, student
+# GET /api/attendance/session-report/
+# Query params: session_id, teacher_id, course_id, student_id
+# ─────────────────────────────────────────────────────────────────────────────
+class SessionReportView(APIView):
+    """
+    Returns attendance records for a specific session, filterable by
+    teacher (professor), course, or student. Designed for fine-grained,
+    per-session reporting from the admin/professor dashboard.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        session_id = request.GET.get('session_id')
+        teacher_id = request.GET.get('teacher_id')
+        course_id  = request.GET.get('course_id')
+        student_id = request.GET.get('student_id')
+
+        queryset = Attendance.objects.select_related(
+            'student', 'session', 'session__course', 'session__professor', 'session__semester'
+        ).all()
+
+        if session_id:
+            queryset = queryset.filter(session_id=session_id)
+        if teacher_id:
+            queryset = queryset.filter(session__professor_id=teacher_id)
+        if course_id:
+            queryset = queryset.filter(session__course_id=course_id)
+        if student_id:
+            queryset = queryset.filter(student__student_id=student_id)
+
+        results = []
+        for att in queryset:
+            results.append({
+                'attendance_id':  att.id,
+                'student_id':     att.student.student_id,
+                'student_name':   att.student.name,
+                'course_code':    att.session.course.code,
+                'course_name':    att.session.course.name,
+                'professor_name': att.session.professor.name,
+                'semester_name':  att.session.semester.name,
+                'session_id':     att.session.id,
+                'scanned_at':     att.scanned_at.isoformat(),
+                'status':         att.status,
+            })
+
+        return Response({
+            'count': len(results),
+            'results': results,
+        })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# NEW: Comprehensive Course Report
+# GET /api/attendance/course-report/<int:course_id>/
+# Returns full attendance matrix per enrolled student for the active semester.
+# ─────────────────────────────────────────────────────────────────────────────
+class CourseAttendanceReportView(APIView):
+    """
+    Returns a comprehensive, per-student attendance report for a course in the
+    active semester.
+
+    Response shape per student:
+    {
+      student_id, student_name, student_major,
+      course_name, professor_name, department_name, semester_name,
+      total_lectures,          # from semester.total_lectures
+      lectures: [              # one entry per actual session held
+        { lecture_number, date, time, status: 'Present'|'Absent' }
+      ],
+      total_present, total_absent, attendance_pct
+    }
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, course_id):
+        try:
+            course = Course.objects.select_related('department').get(id=course_id)
+        except Course.DoesNotExist:
+            return Response({'error': 'Course not found.'}, status=404)
+
+        try:
+            semester = Semester.objects.get(is_active=True)
+        except Semester.DoesNotExist:
+            return Response({'error': 'No active semester found.'}, status=400)
+
+        # Resolve assigned professor for this course/semester
+        assignment = (
+            CourseAssignment.objects
+            .filter(course=course, semester=semester)
+            .select_related('professor')
+            .first()
+        )
+        professor_name = assignment.professor.name if assignment else '—'
+
+        # All distinct session dates (chronological) for this course/semester
+        # If multiple sessions are held on the same day, group them as 1 lecture.
+        sessions = (
+            Session.objects
+            .filter(course=course, semester=semester)
+            .order_by('date_time')
+        )
+        
+        lecture_dates_map = {} # date -> first session of that day
+        for sess in sessions:
+            dt = sess.date_time.date()
+            if dt not in lecture_dates_map:
+                lecture_dates_map[dt] = sess
+                
+        lecture_dates_list = list(lecture_dates_map.keys())
+        total_lectures_held = len(lecture_dates_list)
+
+        # All enrolled students
+        enrollments = (
+            Enrollment.objects
+            .filter(course=course, semester=semester)
+            .select_related('student', 'student__department')
+        )
+        students = [e.student for e in enrollments]
+
+        if not students:
+            return Response({
+                'course_name':    course.name,
+                'course_code':    course.code,
+                'professor_name': professor_name,
+                'department_name':course.department.name,
+                'semester_name':  semester.name,
+                'total_lectures': semester.total_lectures,
+                'students':       [],
+            })
+
+        # Pre-fetch attendance for all students in this course/semester
+        attendances = (
+            Attendance.objects
+            .filter(session__course=course, session__semester=semester, student__in=students)
+            .select_related('student', 'session')
+        )
+
+        # attendance_map[(student_id, lecture_date)] = True
+        attendance_map = {}
+        for att in attendances:
+            if att.status == 'present':
+                att_date = att.session.date_time.date()
+                attendance_map[(att.student_id, att_date)] = True
+
+        student_rows = []
+        for student in students:
+            lectures = []
+            total_present = 0
+
+            for idx, l_date in enumerate(lecture_dates_list):
+                is_present = attendance_map.get((student.pk, l_date), False)
+                if is_present:
+                    total_present += 1
+                
+                sess = lecture_dates_map[l_date] # first session of that day
+
+                lectures.append({
+                    'lecture_number': idx + 1,
+                    'date': l_date.strftime('%Y-%m-%d'),
+                    'time': sess.date_time.strftime('%H:%M'),
+                    'datetime_iso': sess.date_time.isoformat(),
+                    'session_id': sess.id,
+                    'status': 'Present' if is_present else 'Absent',
+                })
+
+            total_absent = total_lectures_held - total_present
+            attendance_pct = (
+                round((total_present / total_lectures_held) * 100, 1)
+                if total_lectures_held > 0 else 0.0
+            )
+
+            student_rows.append({
+                'student_id':      student.student_id,
+                'student_name':    student.name,
+                'student_major':   student.student_major,
+                'department_name': student.department.name,
+                'course_name':     course.name,
+                'course_code':     course.code,
+                'professor_name':  professor_name,
+                'semester_name':   semester.name,
+                'total_lectures':  semester.total_lectures,     # quota (e.g. 15)
+                'lectures_held':   total_lectures_held,         # actual sessions run so far
+                'lectures':        lectures,
+                'total_present':   total_present,
+                'total_absent':    total_absent,
+                'attendance_pct':  attendance_pct,
+            })
+
+        return Response({
+            'course_name':    course.name,
+            'course_code':    course.code,
+            'professor_name': professor_name,
+            'department_name':course.department.name,
+            'semester_name':  semester.name,
+            'total_lectures': semester.total_lectures,
+            'lectures_held':  total_lectures_held,
+            'students':       student_rows,
         })
 
 
