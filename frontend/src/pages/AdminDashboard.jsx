@@ -393,28 +393,34 @@ const AdminDashboard = () => {
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
       {/* ── Header ── */}
-      <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 bg-white dark:bg-slate-900/80 p-6 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] dark:shadow-none border border-gray-100 dark:border-slate-800/60">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
+          <h1 className="text-2xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
             Admin Dashboard
           </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">
+          <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
             Manage users, courses, assignments, and enrollments.
           </p>
         </div>
 
-        {/* Global Search */}
-        <div className="w-full md:w-72 relative">
-          <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-            <Search size={18} />
+        <div className="flex items-center gap-4 w-full md:w-auto">
+          {/* Global Search */}
+          <div className="w-full md:w-80 relative">
+            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-gray-400">
+              <Search size={18} />
+            </div>
+            <input
+              type="text"
+              className="input pl-10 mb-0 shadow-sm border-gray-200 dark:border-slate-700 focus:ring-[#D4AF37]/20 bg-gray-50 dark:bg-slate-800/80"
+              placeholder={`Search ${activeTab}...`}
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
           </div>
-          <input
-            type="text"
-            className="input pl-10 mb-0 shadow-sm border-slate-200 focus:ring-brand-500"
-            placeholder={`Search ${activeTab}...`}
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-          />
+          
+          <div className="hidden md:flex shrink-0 w-11 h-11 rounded-full bg-gradient-to-br from-[#D4AF37] to-[#B8860B] items-center justify-center text-white font-bold shadow-lg shadow-[#D4AF37]/20">
+            A
+          </div>
         </div>
       </div>
 
@@ -431,8 +437,8 @@ const AdminDashboard = () => {
               inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold
               transition-all duration-150 border
               ${activeTab === key
-                ? `${TAB_COLORS[key]} text-white border-transparent shadow-md`
-                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:border-slate-300'}
+                ? `bg-[#D4AF37]/10 text-[#B8860B] border-[#D4AF37]/30 shadow-sm dark:bg-[#D4AF37]/20 dark:text-[#D4AF37]`
+                : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-gray-300 dark:hover:border-slate-600'}
             `}
           >
             <Icon size={15} /> {label}
@@ -441,7 +447,7 @@ const AdminDashboard = () => {
       </div>
 
       {/* ── Content card ── */}
-      <div className="card p-5">
+      <div className="float-card p-5">
         {/* Card header */}
         <div className="flex justify-between items-center mb-5 flex-wrap gap-3">
           <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
@@ -507,7 +513,7 @@ const AdminDashboard = () => {
               <button
                 type="submit"
                 disabled={formLoading}
-                className={`btn-primary w-full justify-center ${TAB_COLORS[activeTab]} border-transparent`}
+                className={`btn-gold w-full justify-center border-transparent`}
               >
                 {formLoading ? <Loader2 size={16} className="animate-spin" /> : null}
                 {formLoading ? 'Creating…' : 'Create'}

@@ -3,6 +3,8 @@ from rest_framework import viewsets
 from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAdminUser
+from django.utils.decorators import method_decorator
+from django.views.decorators.cache import cache_page
 from .models import Department, Semester
 from .serializers import DepartmentSerializer, SemesterSerializer
 from accounts.models import Student, Professor
@@ -12,6 +14,7 @@ from courses.models import Course
 class DepartmentListView(APIView):
     permission_classes = [AllowAny]
 
+    @method_decorator(cache_page(60 * 15))
     def get(self, request):
         departments = Department.objects.all()
         serializer = DepartmentSerializer(departments, many=True)
@@ -21,6 +24,7 @@ class DepartmentListView(APIView):
 class SemesterListView(APIView):
     permission_classes = [AllowAny]
 
+    @method_decorator(cache_page(60 * 15))
     def get(self, request):
         semesters = Semester.objects.all().order_by('-is_active', '-id')
         serializer = SemesterSerializer(semesters, many=True)
@@ -30,6 +34,7 @@ class SemesterListView(APIView):
 class ActiveSemesterView(APIView):
     permission_classes = [AllowAny]
 
+    @method_decorator(cache_page(60 * 15))
     def get(self, request):
         try:
             semester = Semester.objects.get(is_active=True)
@@ -46,6 +51,7 @@ class StatsView(APIView):
     """Returns dashboard statistics."""
     permission_classes = [AllowAny]
 
+    @method_decorator(cache_page(60))
     def get(self, request):
         try:
             active_semester = Semester.objects.get(is_active=True)

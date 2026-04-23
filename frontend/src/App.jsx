@@ -45,7 +45,7 @@ function AppContent() {
 
   // Anti-Gravity is dark-first; allow toggling back to light
   const [theme, setTheme] = useState(
-    () => localStorage.getItem('theme') || 'dark'
+    () => localStorage.getItem('theme') || 'light'
   );
 
   useEffect(() => {
@@ -63,7 +63,7 @@ function AppContent() {
   const isLoginPage = !user;
 
   return (
-    <div className="min-h-screen flex bg-[#0a0a0f] transition-colors duration-300">
+    <div className="min-h-screen flex bg-gray-50 dark:bg-[#0a0a0f] transition-colors duration-300 text-slate-800 dark:text-slate-100">
 
       {/* Sidebar — only shown when authenticated */}
       {user && (

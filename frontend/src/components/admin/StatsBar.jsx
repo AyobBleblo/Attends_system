@@ -1,10 +1,10 @@
 import { Users, GraduationCap, BookOpen, ClipboardList } from 'lucide-react';
 
 const STATS = [
-  { key: 'students',    label: 'Students',    icon: Users,          color: 'bg-indigo-500',  ring: 'ring-indigo-200' },
-  { key: 'professors',  label: 'Professors',  icon: GraduationCap,  color: 'bg-violet-500',  ring: 'ring-violet-200' },
-  { key: 'courses',     label: 'Courses',     icon: BookOpen,       color: 'bg-sky-500',     ring: 'ring-sky-200' },
-  { key: 'enrollments', label: 'Enrollments', icon: ClipboardList,  color: 'bg-emerald-500', ring: 'ring-emerald-200' },
+  { key: 'students',    label: 'Students',    icon: Users,          color: 'bg-indigo-100 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400' },
+  { key: 'professors',  label: 'Professors',  icon: GraduationCap,  color: 'bg-[#D4AF37]/10 text-[#B8860B] dark:bg-[#D4AF37]/20 dark:text-[#D4AF37]' },
+  { key: 'courses',     label: 'Courses',     icon: BookOpen,       color: 'bg-sky-100 text-sky-600 dark:bg-sky-500/20 dark:text-sky-400' },
+  { key: 'enrollments', label: 'Enrollments', icon: ClipboardList,  color: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-500/20 dark:text-emerald-400' },
 ];
 
 /**
@@ -15,13 +15,13 @@ const STATS = [
  */
 const StatsBar = ({ counts = {}, loading = false }) => (
   <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
-    {STATS.map(({ key, label, icon: Icon, color, ring }) => (
+    {STATS.map(({ key, label, icon: Icon, color }) => (
       <div
         key={key}
-        className={`card p-4 flex items-center gap-4 ring-1 ${ring}`}
+        className="float-card p-5 flex items-center gap-4"
       >
-        <div className={`${color} p-3 rounded-xl text-white shadow-md shrink-0`}>
-          <Icon size={20} />
+        <div className={`${color} p-3.5 rounded-xl shrink-0`}>
+          <Icon size={24} />
         </div>
         <div>
           <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase tracking-wide">

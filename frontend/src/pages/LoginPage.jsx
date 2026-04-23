@@ -18,7 +18,9 @@ function LoginPage() {
     setLoading(true);
     try {
       const userData = await login(username, password);
-      if (userData.role === 'professor') {
+      if (userData.role === 'admin') {
+        navigate('/admin-dashboard');
+      } else if (userData.role === 'professor') {
         navigate('/professor');
       } else if (userData.role === 'student') {
         navigate('/student');
@@ -65,7 +67,7 @@ function LoginPage() {
             />
           </div>
           <h1 className="text-3xl font-black text-[#1a1c20] tracking-tighter uppercase">
-            University Portal
+            ALARAB UNIVERSITY 
           </h1>
         </div>
 
@@ -131,10 +133,10 @@ function LoginPage() {
               whileHover={{ scale: 1.01, translateY: -2 }}
               whileTap={{ scale: 0.98 }}
               type="submit"
-              className="w-full bg-[#D4AF37] hover:bg-[#C19A2E] text-white font-bold text-sm tracking-widest uppercase py-4.5 rounded-xl flex items-center justify-center gap-3 transition-all duration-300 shadow-xl shadow-[#D4AF37]/30 disabled:opacity-50"
+              className="w-full bg-[#D4AF37] hover:bg-[#C19A2E] text-white font-bold text-lg tracking-widest uppercase py-5. px-4.5 rounded-xl flex items-center justify-center gap-3 transition-all duration-300 shadow-xl shadow-[#D4AF37]/30 disabled:opacity-50"
               disabled={loading}
             >
-              <LogIn size={20} />
+              <LogIn size={24} />
               <span>{loading ? 'Authenticating...' : 'Sign In'}</span>
             </motion.button>
           </form>
@@ -142,7 +144,7 @@ function LoginPage() {
         
         {/* Footer Content */}
         <p className="text-center mt-12 text-gray-400 text-xs tracking-wide">
-          &copy; 2026 UNIVERSITY OF TECHNOLOGY. ALL RIGHTS RESERVED.
+          &copy; ALARAB MEDICAL UNIVERSITY FOR SCIENCE AND TECHNOLOGY 
         </p>
       </motion.div>
     </div>

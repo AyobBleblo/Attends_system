@@ -51,8 +51,8 @@ function SidebarNavItem({ item, collapsed }) {
       className={({ isActive }) =>
         `relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group
          ${isActive
-           ? 'bg-gold-500/15 text-gold-400'
-           : 'text-slate-400 hover:text-slate-100 hover:bg-white/5'
+           ? 'bg-[#D4AF37]/10 text-[#B8860B] dark:bg-gold-500/15 dark:text-gold-400'
+           : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-gray-50 dark:hover:bg-white/5'
          }`
       }
     >
@@ -69,7 +69,7 @@ function SidebarNavItem({ item, collapsed }) {
 
           <Icon
             size={20}
-            className={`shrink-0 transition-colors ${isActive ? 'text-gold-400' : 'text-slate-500 group-hover:text-slate-300'}`}
+            className={`shrink-0 transition-colors ${isActive ? 'text-[#B8860B] dark:text-gold-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`}
           />
 
           <AnimatePresence initial={false}>
@@ -149,7 +149,7 @@ function SidebarDrawer({ theme, toggleTheme }) {
           <button
             onClick={() => setCollapsed(c => !c)}
             className="shrink-0 w-7 h-7 rounded-lg flex items-center justify-center
-                       text-slate-500 hover:text-gold-400 hover:bg-white/5 transition-colors"
+                       text-slate-400 dark:text-slate-500 hover:text-[#B8860B] dark:hover:text-gold-400 hover:bg-gray-50 dark:hover:bg-white/5 transition-colors"
             aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
           >
             {collapsed ? <ChevronRight size={16} /> : <ChevronLeft size={16} />}
@@ -168,12 +168,12 @@ function SidebarDrawer({ theme, toggleTheme }) {
               className="px-4 py-3 border-b border-white/5 overflow-hidden"
             >
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-gold-400 to-gold-600 flex items-center justify-center text-[#0a0a0f] font-bold text-sm shrink-0">
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-[#D4AF37] to-[#B8860B] dark:from-gold-400 dark:to-gold-600 flex items-center justify-center text-white dark:text-[#0a0a0f] font-bold text-sm shrink-0">
                   {user.name?.[0]?.toUpperCase() || '?'}
                 </div>
                 <div className="min-w-0">
-                  <p className="text-sm font-semibold text-slate-100 truncate">{user.name}</p>
-                  <p className="text-[11px] text-gold-500 capitalize font-medium">{user.role}</p>
+                  <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{user.name}</p>
+                  <p className="text-[11px] text-[#B8860B] dark:text-gold-500 capitalize font-medium">{user.role}</p>
                 </div>
               </div>
             </motion.div>
@@ -194,7 +194,7 @@ function SidebarDrawer({ theme, toggleTheme }) {
           <button
             onClick={toggleTheme}
             className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
-                       text-slate-400 hover:text-slate-100 hover:bg-white/5 transition-all"
+                       text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
             aria-label="Toggle theme"
           >
             {theme === 'dark'
@@ -221,7 +221,7 @@ function SidebarDrawer({ theme, toggleTheme }) {
             <button
               onClick={() => setPwdOpen(true)}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
-                         text-slate-400 hover:text-slate-100 hover:bg-white/5 transition-all"
+                         text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
             >
               <KeyRound size={19} className="shrink-0" />
               <AnimatePresence initial={false}>
@@ -246,7 +246,7 @@ function SidebarDrawer({ theme, toggleTheme }) {
             <button
               onClick={handleLogout}
               className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
-                         text-red-400 hover:text-red-300 hover:bg-red-900/20 transition-all"
+                         text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
             >
               <LogOut size={19} className="shrink-0" />
               <AnimatePresence initial={false}>

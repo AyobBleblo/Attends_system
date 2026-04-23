@@ -1,0 +1,10 @@
+CORS_ALLOW_ALL_ORIGINS = True{By default, 
+browsers block JavaScript from talking to a different server 
+(e.g., React on localhost:3000 can't call Django on localhost:8000). This setting says 
+"allow ALL origins." Fine for development, but in production you'd restrict it.}
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME': timedelta(hours=8),   # Login stays valid 8 hours
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),    # Refresh token valid 7 days
+    'ROTATE_REFRESH_TOKENS': True,
+}
+i need to remove unsecure : 'django.contrib.auth.hashers.MD5PasswordHasher', 
