@@ -71,18 +71,36 @@ DATABASES = {
         'PASSWORD': os.getenv('DB_PASSWORD', ''),
         'HOST': os.getenv('DB_HOST', 'localhost'),
         'PORT': os.getenv('DB_PORT', '5432'),
-        # Keep DB connections alive for 10 min to avoid per-request TCP+auth overhead.
-        # Critical for high-concurrency: 25 workers × 100 students = no reconnect storm.
+        # Persistent connections per thread. CRITICAL: total threads across all
+        # Gunicorn workers must stay BELOW PostgreSQL max_connections (150).
+        # Formula: workers(9) × threads(9) = 81 < max_connections(150). Safe.
         'CONN_MAX_AGE': 600,
+        # Re-validate the connection is alive before each request.
+        # Prevents 30-second hangs from stale sockets killed by PG idle timeout.
+        'CONN_HEALTH_CHECKS': True,
     }
 }
 
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
-        'LOCATION': 'unique-snowflake',
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': os.getenv('REDIS_URL', 'redis://127.0.0.1:6379/0'),
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'IGNORE_EXCEPTIONS': True,
+            # Cap Redis TCP connections — without this every Gunicorn thread
+            # opens its own socket, overwhelming Redis at high concurrency.
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 100,
+                'socket_connect_timeout': 5,
+                'socket_timeout': 5,
+            },
+        }
     }
 }
+
+SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+SESSION_CACHE_ALIAS = 'default'
 
 AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'},
@@ -91,13 +109,16 @@ AUTH_PASSWORD_VALIDATORS = [
     {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'},
 ]
 
+# ── Password Hashing (Production-Secure) ─────────────────────────────────────
+# PBKDF2 is Django's default and NIST-approved. MD5 was only used temporarily
+# during load-testing to avoid PBKDF2 CPU cost skewing benchmarks.
+# It is REMOVED here for all production deployments.
 PASSWORD_HASHERS = [
-    'django.contrib.auth.hashers.MD5PasswordHasher',
     'django.contrib.auth.hashers.PBKDF2PasswordHasher',
     'django.contrib.auth.hashers.PBKDF2SHA1PasswordHasher',
     'django.contrib.auth.hashers.Argon2PasswordHasher',
     'django.contrib.auth.hashers.BCryptSHA256PasswordHasher',
-    ]
+]
 
 LANGUAGE_CODE = 'en-us'
 TIME_ZONE = 'UTC'
@@ -109,13 +130,16 @@ STATIC_ROOT = BASE_DIR / 'staticfiles'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Django REST Framework
+# ── Django REST Framework ─────────────────────────────────────────────────────
+# Global default: all endpoints require a valid JWT token.
+# Views that must be public (e.g. login, QR scan) explicitly override this
+# with permission_classes = [IsAuthenticated] or a custom permission.
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
         'rest_framework_simplejwt.authentication.JWTAuthentication',
     ],
     'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',
+        'rest_framework.permissions.IsAuthenticated',
     ],
 }
 

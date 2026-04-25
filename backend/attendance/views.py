@@ -59,7 +59,7 @@ class CourseSessionsView(APIView):
 
 
 class SessionCreateView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         professor_id = request.data.get('professor_id')
@@ -103,7 +103,7 @@ class SessionCreateView(APIView):
 
 
 class SessionQRView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, session_id):
         try:
@@ -123,7 +123,7 @@ class SessionQRView(APIView):
 
 
 class SessionRefreshQRView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def post(self, request, session_id):
         try:
@@ -137,7 +137,8 @@ class SessionRefreshQRView(APIView):
 
 
 class AttendanceScanView(APIView):
-    permission_classes = [AllowAny]
+    # Students must be logged in (JWT) before they can submit a scan.
+    permission_classes = [IsAuthenticated]
 
     def post(self, request):
         student_id = request.data.get('student_id')
@@ -158,7 +159,7 @@ class AttendanceScanView(APIView):
 
 
 class SessionAttendanceListView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, session_id):
         attendances = Attendance.objects.filter(
@@ -169,7 +170,7 @@ class SessionAttendanceListView(APIView):
 
 
 class AttendanceReportView(APIView):
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         course_id = request.GET.get('course_id')
@@ -215,7 +216,7 @@ class SessionReportView(APIView):
     teacher (professor), course, or student. Designed for fine-grained,
     per-session reporting from the admin/professor dashboard.
     """
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request):
         session_id = request.GET.get('session_id')
@@ -278,7 +279,7 @@ class CourseAttendanceReportView(APIView):
       total_present, total_absent, attendance_pct
     }
     """
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, course_id):
         try:
@@ -409,7 +410,7 @@ class CourseAttendanceReportView(APIView):
 class StudentCoursesView(APIView):
     """Returns courses a student is enrolled in for the active semester,
     including per-course attendance stats (attended_count / total_sessions)."""
-    permission_classes = [AllowAny]
+    permission_classes = [IsAuthenticated]
 
     def get(self, request, student_id):
         from accounts.models import Student
@@ -536,7 +537,8 @@ class CourseExportView(APIView):
 
             return response
             
-        except Course.DoesNotExist:
             return Response({'error': 'Course not found.'}, status=404)
         except Semester.DoesNotExist:
             return Response({'error': 'Active semester not found.'}, status=404)
+
+

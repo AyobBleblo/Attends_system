@@ -24,6 +24,9 @@ class Command(BaseCommand):
 
         success_count = 0
         skipped_count = 0
+        
+        from django.contrib.auth.hashers import make_password
+        hashed_password = make_password("Student@1234")
 
         for i in range(1, count + 1):
             username = f"student_{i}@university.local"
@@ -45,9 +48,11 @@ class Command(BaseCommand):
                         }
                     )
                     
-                    # CRITICAL: Always update password for hasher changes
-                    user.set_password(password)
-                    user.save()
+                    # CRITICAL: Bulk assign pre-hashed password to save CPU
+                    # Only save if created or if it's still using the old MD5 hasher
+                    if user_created or not user.password.startswith('pbkdf2_'):
+                        user.password = hashed_password
+                        user.save()
 
                     # Check/Create the connected Student Profile
                     student, student_created = Student.objects.get_or_create(

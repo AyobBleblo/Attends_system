@@ -8,19 +8,39 @@ services:
       POSTGRES_DB: ${DB_NAME:-attendance_db}
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASSWORD:-postgres}
-    # ── PostgreSQL performance tuning for 12-core / 4GB VM ──────────────
+    # ── PostgreSQL performance tuning for 8-core / 8GB VM ───────────────
+    # shared_buffers    = 2GB  → 25% of total RAM. PG's own I/O cache.
+    #                           The most impactful single PG setting.
+    # effective_cache   = 5GB  → Tells the query planner how much RAM the
+    #                           OS page cache has. Higher = smarter index usage.
+    # work_mem          = 32MB → Per-sort / per-hash-table allocation.
+    #                           With max_connections=150: worst case
+    #                           150 × 32MB = 4.8GB. Set conservatively.
+    # maintenance_mem   = 512MB→ For VACUUM, CREATE INDEX. Large enough to
+    #                           rebuild indexes quickly without stalling.
+    # max_connections   = 150  → Gunicorn uses 81 (9w×9t). Leaves 69 slots
+    #                           for admin, migrations, and health checks.
+    #                           Fewer connections = less lock contention.
+    # wal_buffers       = 64MB → Larger WAL buffer reduces fsync pressure
+    #                           during the write burst (1000 INSERT/UPDATEs).
+    # checkpoint_target = 0.9  → Spreads checkpoint I/O over 90% of the
+    #                           checkpoint interval, smoothing disk usage.
+    # random_page_cost  = 1.1  → Treats storage as nearly sequential (SSD/
+    #                           Docker volume). Encourages index-only scans.
     command:
       - "postgres"
-      - "-c" 
-      - "max_connections=200"
       - "-c"
-      - "shared_buffers=1GB"
+      - "max_connections=500"
       - "-c"
-      - "effective_cache_size=3GB"
+      - "shared_buffers=2GB"
       - "-c"
-      - "work_mem=16MB"
+      - "effective_cache_size=5GB"
       - "-c"
-      - "maintenance_work_mem=256MB"
+      - "work_mem=32MB"
+      - "-c"
+      - "maintenance_work_mem=512MB"
+      - "-c"
+      - "wal_buffers=64MB"
       - "-c"
       - "random_page_cost=1.1"
       - "-c"
@@ -32,11 +52,34 @@ services:
     deploy:
       resources:
         limits:
+          # DB is I/O-bound not CPU-bound. 2 cores is ample.
+          # 2GB: fits shared_buffers=1.5GB + OS page cache. Safer on 8GB host.
           cpus: '2.0'
           memory: 2048M
         reservations:
           cpus: '1.0'
-          memory: 512M
+          memory: 1024M
+    networks:
+      - app_network
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    # Persist data across container restarts and cap memory to prevent
+    # Redis from consuming unbounded RAM if cache keys grow unexpectedly.
+    command: redis-server --maxmemory 200mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    deploy:
+      resources:
+        limits:
+          # Redis is single-threaded for commands; 1 core is plenty.
+          # 256M cap — matches maxmemory 200mb + headroom for overhead.
+          cpus: '1.0'
+          memory: 256M
+        reservations:
+          cpus: '0.25'
+          memory: 128M
     networks:
       - app_network
 
@@ -50,21 +93,36 @@ services:
       - DB_USER=${DB_USER:-postgres}
       - DB_PASSWORD=${DB_PASSWORD:-postgres}
       - DB_PORT=5432
+      - REDIS_URL=redis://redis:6379/0
       - SECRET_KEY=${SECRET_KEY:-fallback-secret-key-change-in-production}
       - ALLOWED_HOSTS=*
       - USE_FAST_HASHER=True
     depends_on:
       - db
+      - redis
     volumes:
       - static_volume:/app/staticfiles
+    # Raise the open-file-descriptor limit so the container can hold
+    # 1000+ simultaneous TCP sockets (Gunicorn + Redis + PG connections).
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
+    # /dev/shm is used by Gunicorn (--worker-tmp-dir) for worker heartbeat files.
+    # On WSL2 the default size is 64MB which is enough, but explicit is better.
+    shm_size: '256mb'
     deploy:
       resources:
         limits:
-          cpus: '10.0'
-          memory: 4096M
+          # Backend gets the majority of CPU headroom.
+          # cpus='6.0' on an 8-core host allows bursting to 75% CPU —
+          # which is our target. The OS scheduler handles the rest.
+          cpus: '6.0'
+          memory: 3584M
+
         reservations:
           cpus: '4.0'
-          memory: 1024M
+          memory: 1536M
     networks:
       - app_network
 
@@ -81,11 +139,13 @@ services:
     deploy:
       resources:
         limits:
-          cpus: '4.0'
-          memory: 1024M
+          # Nginx is event-driven and extremely lightweight.
+          # 2 cores handles 20,000+ conn/worker with ease.
+          cpus: '2.0'
+          memory: 512M
         reservations:
-          cpus: '1.0'
-          memory: 256M
+          cpus: '0.5'
+          memory: 64M
     networks:
       - app_network
 

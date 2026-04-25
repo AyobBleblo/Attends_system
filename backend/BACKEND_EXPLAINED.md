@@ -1,1260 +1,785 @@
-# 📚 The Alarab Attendance System — Backend Explained (Teacher Edition)
+# 📚 Backend Explained — Teacher's Guide
 
-> **هذا الملف يشرح كل شيء في الـ backend خطوة بخطوة، كأنك مع أستاذ يشرح لك.**
-> Everything is broken down from scratch — no assumptions made.
-
----
-
-## 🗂️ Table of Contents
-
-1. [What is the Backend?](#1-what-is-the-backend)
-2. [How Django Works — The Big Picture](#2-how-django-works--the-big-picture)
-3. [Project Structure Overview](#3-project-structure-overview)
-4. [Configuration — `config/`](#4-configuration--config)
-5. [The Database — How Data is Stored](#5-the-database--how-data-is-stored)
-6. [App: `core` — Foundation Models](#6-app-core--foundation-models)
-7. [App: `accounts` — Users, Students & Professors](#7-app-accounts--users-students--professors)
-8. [App: `courses` — Courses & Assignments](#8-app-courses--courses--assignments)
-9. [App: `attendance` — The Heart of the System](#9-app-attendance--the-heart-of-the-system)
-10. [Serializers — From Python to JSON](#10-serializers--from-python-to-json)
-11. [Views — The Request Handlers](#11-views--the-request-handlers)
-12. [URL Routing — How Requests Find Their Handler](#12-url-routing--how-requests-find-their-handler)
-13. [The QR Attendance Flow — Step by Step](#13-the-qr-attendance-flow--step-by-step)
-14. [The Lecture Tracking Service](#14-the-lecture-tracking-service)
-15. [Authentication — JWT Tokens](#15-authentication--jwt-tokens)
-16. [Docker & Startup — `entrypoint.sh`](#16-docker--startup--entrypointsh)
-17. [Complete API Reference Table](#17-complete-api-reference-table)
+> **I am your teacher. You are the student. We will go through everything step by step.**
+> Every concept will be explained simply first, then you'll see the actual code from YOUR project.
 
 ---
 
-## 1. What is the Backend?
-
-Think of the system as a restaurant:
-
-- **The Frontend (React app)** = the dining room where customers sit. It's what users *see*.
-- **The Backend (Django)** = the kitchen. It does all the real work — cooking the data, storing it, validating it, and sending it back.
-- **The Database (PostgreSQL)** = the pantry/fridge. It permanently stores everything.
-
-The backend is built with **Django** (a Python framework) and exposes a **REST API** — meaning the frontend talks to it via HTTP requests (`GET`, `POST`, `PUT`, `DELETE`) and everything is exchanged as **JSON** data.
-
----
-
-## 2. How Django Works — The Big Picture
-
-When the frontend sends a request, this is the exact journey it takes:
-
-```
-Browser/Frontend
-      │
-      │  HTTP Request (e.g. POST /api/attendance/scan/)
-      ▼
-  Nginx (reverse proxy)
-      │
-      ▼
-  Gunicorn (Python web server — runs Django)
-      │
-      ▼
-  Django Middleware Stack
-  (security, CORS, auth, sessions...)
-      │
-      ▼
-  URL Router (config/urls.py → app urls.py)
-      │
-      ▼
-  View (the function/class that handles the request)
-      │
-      ├─ validates data with a Serializer
-      ├─ queries the Database via Models
-      ├─ runs business logic (services)
-      │
-      ▼
-  JSON Response sent back to browser
-```
-
-Every Django project is split into **apps** — self-contained modules that each handle one area of responsibility. Our backend has 4 apps:
-
-| App | Responsibility |
-|-----|---------------|
-| `core` | Shared building blocks: Departments, Semesters, Notifications |
-| `accounts` | Students & Professors (people) |
-| `courses` | Courses & who teaches what |
-| `attendance` | Sessions, QR codes, scanning, reports |
+## Table of Contents
+1. [The Big Picture — How It All Connects](#1-the-big-picture)
+2. [Models — Your Database Tables](#2-models)
+3. [Serializers — The Translator](#3-serializers)
+4. [Views — The Logic Brain](#4-views)
+5. [URLs — The Address Book](#5-urls--the-api-map)
+6. [Authentication & JWT — Who Are You?](#6-authentication--jwt)
+7. [Permissions — What Can You Do?](#7-permissions)
+8. [Caching with Redis — Speed Tricks](#8-caching-with-redis)
+9. [The QR Scan Service — The Star of the Show](#9-the-qr-scan-service)
+10. [Best Practices Used in This Project](#10-best-practices-used-in-this-project)
 
 ---
 
-## 3. Project Structure Overview
+## 1. The Big Picture
+
+Before touching any code, understand this simple flow:
 
 ```
-backend/
-│
-├── config/              ← Django project settings & root URL config
-│   ├── settings.py      ← All configuration lives here
-│   ├── urls.py          ← The "reception desk" — routes ALL incoming URLs
-│   └── wsgi.py          ← The entry point for Gunicorn (production server)
-│
-├── core/                ← App 1: Foundation — Dept, Semester, Notifications
-│   ├── models.py
-│   ├── serializers.py
-│   ├── views.py
-│   └── urls.py
-│
-├── accounts/            ← App 2: People — Students & Professors
-│   ├── models.py
-│   ├── serializers.py
-│   ├── views.py
-│   └── urls.py
-│
-├── courses/             ← App 3: Courses & Teaching assignments
-│   ├── models.py
-│   ├── serializers.py
-│   ├── views.py
-│   ├── urls.py
-│   └── tracking_service.py  ← Monitors lecture compliance
-│
-├── attendance/          ← App 4: The core feature — QR, Sessions, Records
-│   ├── models.py
-│   ├── serializers.py
-│   ├── views.py
-│   ├── urls.py
-│   └── services.py      ← The `record_attendance` business logic
-│
-├── manage.py            ← The Django command-line tool
-├── entrypoint.sh        ← Docker startup script
-├── Dockerfile           ← How to build the Docker container
-├── requirements.txt     ← All Python packages needed
-└── .env                 ← Secret environment variables (DB password, etc.)
+Browser/Phone
+     │
+     │  HTTP Request: "Give me course data" + JWT token
+     ▼
+  Nginx (frontend container)
+     │  /api/* → forward to backend
+     ▼
+  Gunicorn (runs Django)
+     │
+     ├──► URLs.py        "Which view handles this URL?"
+     ├──► Permissions    "Is this user allowed?"
+     ├──► View           "Do the logic"
+     │       │
+     │       ├──► Model      "Read/Write the database"
+     │       ├──► Redis      "Check the cache first"
+     │       └──► Serializer "Convert Python objects → JSON"
+     │
+     └──► JSON Response back to the browser
 ```
+
+**Think of it like a restaurant:**
+- **URL** = the menu (what you can order)
+- **View** = the cook (does the work)
+- **Model** = the storage room (holds all the data)
+- **Serializer** = the plate (presents the food nicely)
+- **Permission** = the bouncer (you can only enter if you belong)
 
 ---
 
-## 4. Configuration — `config/`
+## 2. Models
 
-### `config/settings.py` — The Brain of Django
+### What is a Model?
 
-This file tells Django *everything* about how to run. Let's go section by section:
+A **Model** is a Python class that represents a **database table**. Each attribute = one column. Django converts it to SQL automatically.
 
-#### 🔑 Secret Key & Debug Mode
 ```python
-SECRET_KEY = os.getenv('SECRET_KEY', 'fallback-secret-key-change-in-production')
-DEBUG = os.getenv('DEBUG', 'True') == 'True'
+# This Python class...
+class Student(models.Model):
+    name = models.CharField(max_length=100)
+    student_id = models.CharField(max_length=20)
+
+# ...becomes this SQL table:
+# CREATE TABLE students (
+#     id INTEGER PRIMARY KEY,
+#     name VARCHAR(100),
+#     student_id VARCHAR(20)
+# );
 ```
-- `SECRET_KEY` — Django uses this to sign cookies, tokens, etc. **Must be secret in production.**
-- `DEBUG = True` means Django shows detailed error pages. In production, set this to `False`.
-- `os.getenv(...)` reads from the `.env` file — this way secrets are not hardcoded into the codebase.
 
-#### 📦 Installed Apps
-```python
-INSTALLED_APPS = [
-    'django.contrib.admin',    # The /admin/ interface
-    'django.contrib.auth',     # User authentication system
-    ...
-    'rest_framework',          # Django REST Framework — makes building APIs easy
-    'corsheaders',             # Allows the React frontend to call our API
-    'core',
-    'accounts',
-    'courses',
-    'attendance',
-]
-```
-Think of `INSTALLED_APPS` like a list of plugins you're activating for your project.
+### Your Project's Models
 
-#### 🔗 CORS (Cross-Origin Resource Sharing)
-```python
-CORS_ALLOW_ALL_ORIGINS = True
-```
-By default, browsers block JavaScript from talking to a different server (e.g., React on `localhost:3000` can't call Django on `localhost:8000`). This setting says "allow ALL origins." Fine for development, but in production you'd restrict it.
-
-#### 🗄️ Database
-```python
-DATABASES = {
-    'default': {
-        'ENGINE': 'django.db.backends.postgresql',
-        'NAME': os.getenv('DB_NAME', 'attendance_db'),
-        ...
-        'CONN_MAX_AGE': 600,  # Keep connection alive for 10 minutes
-    }
-}
-```
-- We use **PostgreSQL** as our database (not SQLite which is Django's default).
-- `CONN_MAX_AGE: 600` — instead of opening a new DB connection for every request (expensive!), we reuse connections for up to 10 minutes. Critical for handling 1000+ concurrent users.
-
-#### 🔐 JWT & Authentication
-```python
-REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework_simplejwt.authentication.JWTAuthentication',
-    ],
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.AllowAny',  # Default: open to everyone
-    ],
-}
-
-SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=8),   # Login stays valid 8 hours
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),    # Refresh token valid 7 days
-    'ROTATE_REFRESH_TOKENS': True,
-}
-```
-- **JWT** = JSON Web Token. Instead of sessions (stored on the server), we give the user a signed "card" (token). The user sends this card with every request. No server-side session needed.
-- Access token expires after **8 hours** — the user needs to log in again.
-- Refresh token lasts **7 days** — can be used to get a new access token silently.
-
-#### 🔒 Password Hashers
-```python
-PASSWORD_HASHERS = [
-    'django.contrib.auth.hashers.MD5PasswordHasher',   # ← FIRST = default
-    'django.contrib.auth.hashers.PBKDF2PasswordHasher',
-    ...
-]
-```
-> ⚠️ **Teacher Note:** MD5 is intentionally placed **first** to make it the default hasher. MD5 is fast (good for load-testing with 1000 users) but **NOT safe for real production systems**. PBKDF2 is the secure default you should use in a real app.
-
-Passwords are NEVER stored as plain text. Django always **hashes** them — a one-way transformation.
+Your project has **4 apps**, each with models:
 
 ---
 
-### `config/urls.py` — The Reception Desk
+#### 📦 `core` app — Foundation
 
 ```python
-urlpatterns = [
-    path('admin/', admin.site.urls),
-
-    # Auth — Login & token refresh
-    path('api/auth/login/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/auth/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-
-    # App URL groups (delegates to each app's urls.py)
-    path('api/', include('core.urls')),
-    path('api/', include('accounts.urls')),
-    path('api/', include('courses.urls')),
-    path('api/', include('attendance.urls')),
-]
+Department  →  name
+Semester    →  name, start_date, end_date, total_lectures, is_active
 ```
 
-This is the "main switchboard." Every URL that comes in is checked here first:
-- If it starts with `admin/` → goes to Django's built-in admin panel.
-- If it starts with `api/auth/login/` → handles login (returns JWT tokens).
-- If it starts with `api/` → delegates to one of the 4 apps.
-
-The `include('core.urls')` means "go look in `core/urls.py` for the rest of the path."
+**`Semester.is_active`** — Only ONE semester is active at a time. All queries use this to filter "current" data. Think of it like a switch: this semester is ON, all others are OFF.
 
 ---
 
-## 5. The Database — How Data is Stored
+#### 👤 `accounts` app — People
 
-The database is organized into **tables**. In Django, each **Model** = one table. Here is the full entity-relationship diagram of every table:
-
-```
-┌─────────────┐       ┌──────────────┐       ┌──────────────────┐
-│ Department  │◄──┬───│   Student    │       │    Professor     │
-│─────────────│   │   │──────────────│       │──────────────────│
-│ id          │   │   │ id           │       │ id               │
-│ name        │   │   │ student_id   │       │ professor_id     │
-│ code        │   │   │ name         │       │ name             │
-└─────────────┘   │   │ department ──┼──────►│ department  ─────┼──► Department
-                  │   │ student_major│       │ user (Django) ───┼──► User
-                  │   │ user ────────┼──────►└──────────────────┘
-                  │   └──────────────┘
-                  │
-                  │   ┌──────────────┐       ┌──────────────────┐
-                  └───│   Course     │       │ CourseAssignment  │
-                      │──────────────│       │──────────────────│
-                      │ id           │       │ id               │
-                      │ code         │       │ professor ───────┼──► Professor
-                      │ name         │       │ course ──────────┼──► Course
-                      │ department──►│       │ semester ────────┼──► Semester
-                      └──────────────┘       │ expected_lectures│
-                                             └──────────────────┘
-
-┌──────────────┐       ┌──────────────┐       ┌──────────────────┐
-│   Semester   │       │  Enrollment  │       │    Session       │
-│──────────────│       │──────────────│       │──────────────────│
-│ id           │       │ id           │       │ id               │
-│ name         │       │ student ─────┼──────►│ course ──────────┼──► Course
-│ start_date   │       │ course ──────┼──────►│ professor ───────┼──► Professor
-│ end_date     │       │ semester ────┼──────►│ semester ────────┼──► Semester
-│ is_active    │       └──────────────┘       │ date_time        │
-│ total_lectures│                             │ qr_token (UUID)  │
-└──────────────┘                             │ qr_expires_at    │
-                                             └──────────────────┘
-                                                      │
-                                             ┌──────────────────┐
-                                             │   Attendance     │
-                                             │──────────────────│
-                                             │ id               │
-                                             │ session ─────────┼──► Session
-                                             │ student ─────────┼──► Student
-                                             │ course ──────────┼──► Course
-                                             │ date             │
-                                             │ scanned_at       │
-                                             │ status (present) │
-                                             └──────────────────┘
-```
-
----
-
-## 6. App: `core` — Foundation Models
-
-This app contains the *shared building blocks* that every other app depends on.
-
-### `core/models.py`
-
-#### 📁 `Department` Model
-```python
-class Department(models.Model):
-    name = models.CharField(max_length=100)   # e.g. "Computer Science"
-    code = models.CharField(max_length=20, unique=True, db_index=True)  # e.g. "CS"
-```
-- Represents an academic department (كلية / قسم).
-- `unique=True` — no two departments can have the same code.
-- `db_index=True` — PostgreSQL creates an index on this column, making lookups by `code` very fast.
-
----
-
-#### 📅 `Semester` Model
-```python
-class Semester(models.Model):
-    name = models.CharField(max_length=100)       # e.g. "Spring 2025"
-    start_date = models.DateField()
-    end_date = models.DateField()
-    is_active = models.BooleanField(default=False)
-    total_lectures = models.PositiveSmallIntegerField(default=15)
-```
-- `is_active` — only ONE semester is active at a time. When a student scans QR, we check the active semester.
-- `total_lectures` — the **quota**: maximum number of times a student can scan per course this semester.
-
-The `save()` method has smart logic:
-```python
-def save(self, *args, **kwargs):
-    if self.is_active:
-        # Deactivate ALL other semesters first
-        Semester.objects.exclude(pk=self.pk).update(is_active=False)
-    super().save(*args, **kwargs)
-```
-> **Teacher Note:** This overrides Django's default save behavior. Before saving this semester as active, it automatically sets all *other* semesters to `is_active=False`. **This guarantees exactly one active semester at all times.** Smart!
-
----
-
-#### 🔔 `Notification` Model
-```python
-class Notification(models.Model):
-    class NotificationType(models.TextChoices):
-        CONGRATULATION = 'congratulation', 'Congratulation'
-        WARNING        = 'warning',        'Warning'
-
-    professor    = models.ForeignKey('accounts.Professor', ...)
-    message      = models.TextField()
-    notification_type = models.CharField(choices=NotificationType.choices, ...)
-    is_read      = models.BooleanField(default=False)
-    created_at   = models.DateTimeField(auto_now_add=True)
-```
-- Created by the Lecture Tracking Service automatically.
-- Two types: 🎉 **Congratulation** (professor hit 100% lectures) or ⚠️ **Warning** (professor is behind with semester ending soon).
-- `is_read` let's the frontend show "unread" badges.
-
----
-
-### `core/views.py`
-
-| View | What it does |
-|------|-------------|
-| `DepartmentListView` | Returns all departments |
-| `SemesterListView` | Returns all semesters |
-| `ActiveSemesterView` | Returns only the active semester |
-| `StatsView` | Returns dashboard counters (total students, professors, etc.) |
-| `AdminSemesterViewSet` | Full CRUD for semesters (admin only) |
-
-`StatsView` is interesting — it's used by the Admin Dashboard homepage:
-```python
-return Response({
-    'total_students': Student.objects.count(),
-    'total_professors': Professor.objects.count(),
-    'total_courses': Course.objects.count(),
-    'total_departments': Department.objects.count(),
-    'active_semester': semester_name,
-})
-```
-One endpoint, five database counts, one response. Simple and efficient.
-
----
-
-## 7. App: `accounts` — Users, Students & Professors
-
-### `accounts/models.py`
-
-#### 🎓 `Student` Model
 ```python
 class Student(models.Model):
-    user         = models.OneToOneField(User, on_delete=models.SET_NULL, null=True, ...)
-    student_id   = models.CharField(max_length=20, unique=True, db_index=True)
-    name         = models.CharField(max_length=100)
-    department   = models.ForeignKey(Department, ...)
-    student_major = models.CharField(max_length=100, blank=True)
+    user       = OneToOneField(User)   # ← Django's built-in login system
+    student_id = CharField(unique=True) # e.g. "STU0042"
+    name       = CharField
+    department = ForeignKey(Department)
+    student_major = CharField          # e.g. "AI & Data Science"
 ```
 
-**Key design decision:** There are TWO "user" concepts working together:
-
-1. **Django's built-in `User`** — handles login, password, and authentication.
-2. **`Student` profile** — stores the student's academic info (ID, department, major).
-
-They are linked by `OneToOneField` — one `User` has exactly one `Student` profile.
-
-When someone logs in, Django checks the `User`. When we want to know their student ID or department, we look at `User.student_profile`.
-
-`on_delete=models.SET_NULL` means: if the User account is deleted, we keep the Student record (just set `user = None`). This preserves academic records.
-
----
-
-#### 👨‍🏫 `Professor` Model
 ```python
 class Professor(models.Model):
-    user          = models.OneToOneField(User, ...)
-    professor_id  = models.CharField(max_length=20, unique=True)
-    name          = models.CharField(max_length=100)
-    department    = models.ForeignKey(Department, ...)
+    user         = OneToOneField(User)
+    professor_id = CharField(unique=True)
+    name         = CharField
+    department   = ForeignKey(Department)
 ```
-Same pattern as Student — linked to Django's User for auth. The `professor_profile` reverse relation lets us do `request.user.professor_profile` to get the professor from the logged-in user.
+
+**Key concept — `OneToOneField`:**
+Django has its own `User` model that handles usernames and passwords. Your `Student` and `Professor` models are **linked** to it with a `OneToOneField`. This means:
+
+```
+auth_user table          Student table
+┌────────────┐           ┌───────────────────┐
+│ id=5       │◄──────────│ user_id = 5       │
+│ username   │           │ student_id = STU01 │
+│ password   │           │ name = Ahmed       │
+└────────────┘           └───────────────────┘
+```
+
+One User account → One Student profile. They are separate tables joined by `user_id`.
 
 ---
 
-### `accounts/serializers.py`
+#### 📖 `courses` app — Academic Structure
 
-Serializers convert Python objects (models) to JSON and back. We have two tiers:
+```python
+class Course(models.Model):
+    code       = CharField(unique=True)  # e.g. "CS301"
+    name       = CharField               # e.g. "Data Structures"
+    department = ForeignKey(Department)
+```
 
-#### Tier 1: Read-only Serializers (for listing)
+```python
+class CourseAssignment(models.Model):
+    professor         = ForeignKey(Professor)
+    course            = ForeignKey(Course)
+    semester          = ForeignKey(Semester)
+    expected_lectures = PositiveSmallIntegerField(default=15)
+
+    class Meta:
+        unique_together = ('professor', 'course', 'semester')
+        # A professor can only be assigned once to a course per semester
+```
+
+**`CourseAssignment`** is a **junction table** — it connects 3 things: who teaches what, in which semester. The `unique_together` prevents duplicate assignments.
+
+---
+
+#### 📋 `attendance` app — The Core Logic
+
+```python
+class Enrollment(models.Model):
+    student  = ForeignKey(Student)
+    course   = ForeignKey(Course)
+    semester = ForeignKey(Semester)
+
+    class Meta:
+        unique_together = ('student', 'course', 'semester')
+        # A student can only enroll once in a course per semester
+```
+
+```python
+class Session(models.Model):
+    course        = ForeignKey(Course)
+    professor     = ForeignKey(Professor)
+    semester      = ForeignKey(Semester)
+    date_time     = DateTimeField(auto_now_add=True)  # set automatically
+    qr_token      = CharField(unique=True, db_index=True)
+    qr_expires_at = DateTimeField
+
+    def save(self, *args, **kwargs):
+        if not self.qr_token:
+            self.qr_token = str(uuid.uuid4())   # auto-generate UUID
+        if not self.qr_expires_at:
+            self.qr_expires_at = now() + timedelta(minutes=15)
+        super().save(*args, **kwargs)
+```
+
+**`db_index=True`** on `qr_token` — this creates a database INDEX. Think of an index like the index at the back of a book. Instead of reading every page to find a word, you jump straight to it. This makes `SELECT * WHERE qr_token = 'abc'` **100x faster**.
+
+```python
+class Attendance(models.Model):
+    session    = ForeignKey(Session)
+    student    = ForeignKey(Student)
+    course     = ForeignKey(Course)     # denormalized for speed
+    date       = DateField(auto_now_add=True)
+    scanned_at = DateTimeField(auto_now_add=True)
+    status     = CharField(choices=['present', 'late', 'absent'], default='present')
+
+    class Meta:
+        unique_together = ('student', 'course', 'date')
+        # One attendance record per student per course per DAY
+        # This is the anti-cheat rule at the DATABASE level
+```
+
+**Why `unique_together` in `Attendance`?**
+This is a **database-level constraint**. Even if your Python code has a bug and tries to insert the same student twice for the same day, the database will REJECT it with an `IntegrityError`. You catch that error and return "already recorded". It's a safety net at the lowest level.
+
+---
+
+## 3. Serializers
+
+### What is a Serializer?
+
+A Serializer converts data **in both directions**:
+
+```
+Python Object  ──► JSON     (when responding to a request)
+JSON           ──► Python   (when receiving data from a form/API)
+```
+
+Without a serializer, you'd have to manually write:
+```python
+# Without serializer — messy manual work
+return {"id": student.id, "name": student.name, "department": student.department.name}
+
+# With serializer — clean and automatic
+serializer = StudentSerializer(student)
+return Response(serializer.data)
+```
+
+### Your Serializers in Action
+
+**`StudentSerializer`** — Read-only, for displaying student data:
 ```python
 class StudentSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
-    username = serializers.CharField(source='user.username', read_only=True)
+    # ^ "source='department.name'" means: follow the FK relationship and get the name
+
     class Meta:
         model = Student
         fields = ['id', 'student_id', 'name', 'department', 'department_name', 'student_major', 'username']
 ```
-- `source='department.name'` — reaches across the relationship to get the department's name (not just its ID number). This prevents the frontend from needing a second API call just to display the name.
 
-#### Tier 2: Admin Serializers (for creating/editing)
+**`AdminStudentSerializer`** — For creating students (write operations):
 ```python
 class AdminStudentSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True)
-    ...
+    # ^ write_only=True: password comes IN but never goes OUT in responses
 
     def create(self, validated_data):
-        username = validated_data.pop('username', None)
-        if not username:
-            username = validated_data.get('student_id')  # Auto-generate!
+        username = validated_data.pop('username', None) or validated_data.get('student_id')
         password = validated_data.pop('password')
-        with transaction.atomic():
+
+        with transaction.atomic():         # ← if ANYTHING fails, roll back EVERYTHING
             user = User.objects.create_user(username=username, password=password)
             student = Student.objects.create(user=user, **validated_data)
         return student
 ```
 
-**Step-by-step what `create()` does:**
+**`transaction.atomic()`** is critical here. Creating a student requires TWO database inserts (one for `User`, one for `Student`). If the second one fails, `atomic()` automatically undoes the first. This prevents "ghost" User accounts with no Student profile.
 
-1. Pops `username` from the data (if not provided, uses the `student_id` as username automatically).
-2. Pops `password` from the data.
-3. Opens a **database transaction** (`transaction.atomic()`) — this means: if creating the User OR the Student fails, **both** are rolled back. You'll never have a User without a Student, or vice versa.
-4. Creates the Django `User` (with hashed password via `create_user`).
-5. Creates the `Student` profile and links it to the User.
+### Serializer Validation
 
-`write_only=True` on `password` means: the password is accepted when creating/updating, but **never** returned in a response. Security!
+```python
+def validate_student_id(self, value):
+    if Student.objects.filter(student_id=value).exists():
+        raise serializers.ValidationError("A student with this ID already exists.")
+    return value
+```
+
+Django calls `validate_<fieldname>` automatically before saving. It's like a custom rule: "before I accept this data, check if it's valid." If you raise `ValidationError`, the API automatically returns a 400 error with your message.
 
 ---
 
-### `accounts/views.py`
+## 4. Views
 
-#### 🔑 `MeView` — Who Am I?
-This is the most important view for the frontend. After logging in, the frontend calls `GET /api/auth/me/` to find out who the user is.
+### What is a View?
+
+A **View** is a function/class that:
+1. Receives an HTTP request
+2. Does some work (read DB, check permissions, run business logic)
+3. Returns an HTTP response (usually JSON)
+
+Your project uses **Class-Based Views (APIView)** and **ViewSets**.
+
+### APIView — Custom Logic
+
+```python
+class SessionCreateView(APIView):
+    permission_classes = [IsAuthenticated]  # must be logged in
+
+    def post(self, request):                # handles POST requests
+        professor_id = request.data.get('professor_id')
+        course_id    = request.data.get('course_id')
+
+        try:
+            professor = Professor.objects.get(pk=professor_id)
+            course    = Course.objects.get(pk=course_id)
+            semester  = Semester.objects.get(is_active=True)
+
+            session = Session.objects.create(
+                professor=professor,
+                course=course,
+                semester=semester,
+            )
+            serializer = SessionSerializer(session)
+            return Response(serializer.data, status=201)  # 201 = Created
+
+        except Exception as e:
+            return Response({'error': str(e)}, status=400)
+```
+
+**HTTP Status Codes you'll see:**
+| Code | Meaning |
+|---|---|
+| 200 | OK — success |
+| 201 | Created — new record made |
+| 400 | Bad Request — your data was wrong |
+| 401 | Unauthorized — not logged in |
+| 403 | Forbidden — logged in but not allowed |
+| 404 | Not Found — record doesn't exist |
+
+### ViewSet — CRUD for Free
+
+```python
+class AdminStudentViewSet(viewsets.ModelViewSet):
+    queryset         = Student.objects.all()
+    serializer_class = AdminStudentSerializer
+    permission_classes = [IsAdminUser]
+    filter_backends  = [filters.SearchFilter]
+    search_fields    = ['name', 'student_id']
+```
+
+A `ModelViewSet` gives you **all 5 CRUD operations automatically**:
+- `GET /admin/students/` → list all students
+- `POST /admin/students/` → create a student
+- `GET /admin/students/3/` → get student with id=3
+- `PUT /admin/students/3/` → update student with id=3
+- `DELETE /admin/students/3/` → delete student with id=3
+
+You wrote 5 lines and got 5 endpoints. That's the power of DRF ViewSets.
+
+### `select_related` — Avoiding the N+1 Problem
+
+```python
+# BAD — N+1 queries (very slow with 100 students)
+students = Student.objects.all()
+for s in students:
+    print(s.department.name)  # NEW DB query for EVERY student!
+    # 100 students = 101 database queries
+
+# GOOD — 1 query with JOIN
+students = Student.objects.select_related('department').all()
+for s in students:
+    print(s.department.name)  # Already in memory — 0 extra queries!
+    # 100 students = 1 database query
+```
+
+Your views use `select_related` everywhere. This is one of the most important performance patterns in Django.
+
+---
+
+## 5. URLs — The API Map
+
+### How URLs Work
+
+Django matches each incoming URL to a View function using patterns:
+
+```python
+# config/urls.py  (the main router)
+urlpatterns = [
+    path('api/', include('accounts.urls')),
+    path('api/', include('attendance.urls')),
+    path('api/', include('courses.urls')),
+    path('api/auth/login/',  TokenObtainPairView.as_view()),  # JWT login
+    path('api/auth/refresh/', TokenRefreshView.as_view()),    # JWT refresh
+]
+```
+
+### Complete API Map of YOUR Project
+
+```
+AUTH
+────────────────────────────────────────────────────────────
+POST   /api/auth/login/               Get JWT tokens
+POST   /api/auth/refresh/             Refresh an expired access token
+GET    /api/auth/me/                  Get current user's profile & role
+POST   /api/auth/change-password/     Change your password
+
+PROFESSOR
+────────────────────────────────────────────────────────────
+GET    /api/professor/<id>/courses/   Get professor's courses this semester
+
+SESSIONS & QR
+────────────────────────────────────────────────────────────
+POST   /api/attendance/sessions/create/              Start a new class session
+GET    /api/attendance/sessions/course/<id>/         Get session history for a course
+GET    /api/attendance/sessions/<id>/qr/             Get QR code image (base64)
+POST   /api/attendance/sessions/<id>/refresh-qr/     Rotate the QR token
+
+SCANNING
+────────────────────────────────────────────────────────────
+POST   /api/attendance/attendance/scan/              Student scans QR code
+GET    /api/attendance/attendance/session/<id>/      Live attendance list
+
+REPORTS
+────────────────────────────────────────────────────────────
+GET    /api/attendance/attendance/course-report/<id>/  Full attendance matrix
+GET    /api/attendance/attendance/session-report/      Filtered records
+GET    /api/attendance/export/course/<id>/             Download CSV
+
+STUDENT
+────────────────────────────────────────────────────────────
+GET    /api/attendance/student/<student_id>/courses/   Student's own courses & stats
+
+ADMIN (IsAdminUser required)
+────────────────────────────────────────────────────────────
+GET/POST        /api/admin/students/           List / Create students
+GET/PUT/DELETE  /api/admin/students/<id>/      Manage one student
+POST            /api/admin/students/<id>/reset_password/
+POST            /api/admin/students/<id>/set_custom_password/
+
+GET/POST        /api/admin/professors/         List / Create professors
+GET/POST        /api/admin/courses/            List / Create courses
+GET/POST        /api/admin/semesters/          List / Create semesters
+GET/POST        /api/admin/assignments/        List / Create assignments
+GET/POST        /api/admin/enrollments/        List / Create enrollments
+```
+
+---
+
+## 6. Authentication & JWT
+
+### The Problem JWT Solves
+
+Imagine a hotel. When you check in, you get a **key card**. Every time you open a door, you show your key card — the hotel doesn't ask you who you are again. JWT works the same way.
+
+**Old way (Session-based):**
+- User logs in → server stores "user 5 is logged in" in database
+- Every request → server reads database to verify
+- Problem: database hit on EVERY request = slow
+
+**JWT way:**
+- User logs in → server gives a **signed token** (like a key card)
+- Every request → server just **reads the token** — no database needed
+- Fast, stateless, scales to 1000 concurrent users easily
+
+### What is a JWT?
+
+A JWT is a string with 3 parts separated by dots:
+
+```
+eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjo1fQ.abc123signature
+      HEADER                  PAYLOAD           SIGNATURE
+```
+
+- **Header**: what algorithm is used (HS256)
+- **Payload**: the data (user_id, expiry time) — this is readable by anyone!
+- **Signature**: HMAC of Header + Payload using your `SECRET_KEY` — only YOUR server can make this
+
+**Important:** The payload is Base64 encoded, not encrypted. Anyone can decode it. But they **cannot fake it** without your `SECRET_KEY`. Never put passwords in a JWT payload.
+
+### The JWT Flow in Your App
+
+**Step 1 — Login:**
+```
+POST /api/auth/login/
+{ "username": "stu0001", "password": "Student@1234" }
+
+Response:
+{
+  "access":  "eyJ...long token...abc",   ← valid for 8 hours
+  "refresh": "eyJ...long token...xyz"    ← valid for 7 days
+}
+```
+
+**Step 2 — Use the access token:**
+```
+GET /api/auth/me/
+Authorization: Bearer eyJ...long token...abc
+
+Response: { "role": "student", "name": "Ahmed", ... }
+```
+
+**Step 3 — When access token expires (after 8 hours):**
+```
+POST /api/auth/refresh/
+{ "refresh": "eyJ...long token...xyz" }
+
+Response: { "access": "eyJ...NEW token...def" }
+```
+
+**Your settings:**
+```python
+SIMPLE_JWT = {
+    'ACCESS_TOKEN_LIFETIME':  timedelta(hours=8),   # 8 hours
+    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),     # 7 days
+    'ROTATE_REFRESH_TOKENS':  True,   # every refresh gives a NEW refresh token
+}
+```
+
+### How PBKDF2 Password Hashing Works
+
+When you save a password, Django does NOT store the plain text:
+
+```
+Password in:  "Student@1234"
+             ↓  (PBKDF2 + random salt + 260,000 iterations)
+Stored hash:  "pbkdf2_sha256$260000$randomsalt$XHg7..."
+```
+
+When someone logs in:
+1. Take their typed password
+2. Run the same 260,000 iterations with the stored salt
+3. Compare the result to the stored hash
+4. If they match → login OK
+
+**Why 260,000 iterations?** Each iteration takes time. 260,000 iterations = ~100ms on a server. For a user logging in once, this is invisible. For a hacker running 10 million guesses/second, it becomes 10 guesses/second. Brute force becomes practically impossible.
+
+---
+
+## 7. Permissions
+
+### How Django Checks Permissions
+
+For every request, Django runs this check BEFORE your view code:
+
+```
+Request arrives
+      │
+      ▼
+Is user authenticated?   ← checked by authentication_classes
+      │
+      ▼
+Does user have permission? ← checked by permission_classes
+      │
+      ▼
+Run the view code
+```
+
+### Permission Classes Used
+
+```python
+# Anyone can call this (no login needed)
+permission_classes = [AllowAny]
+# Used for: login endpoint only
+
+# Must have a valid JWT token
+permission_classes = [IsAuthenticated]
+# Used for: most views
+
+# Must be staff/superuser
+permission_classes = [IsAdminUser]
+# Used for: admin CRUD views
+```
+
+### The Global Default
+
+In `settings.py`:
+```python
+REST_FRAMEWORK = {
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+}
+```
+
+This means **every view requires authentication by default**. If you forget to add `permission_classes` to a view, it's still protected. Only views that explicitly set `AllowAny` are public. This is "secure by default" — a production best practice.
+
+### The `MeView` — Smart Role Detection
 
 ```python
 class MeView(APIView):
     permission_classes = [IsAuthenticated]
 
     def get(self, request):
-        user = request.user
+        user = request.user   # Django gives you the user from the JWT automatically
 
-        # Check 1: Is this an admin?
         if user.is_staff or user.is_superuser:
             return Response({'role': 'admin', ...})
 
-        # Check 2: Is this a professor?
         professor = Professor.objects.filter(user=user).first()
         if professor:
-            return Response({'role': 'professor', 'courses': [...], ...})
+            return Response({'role': 'professor', ...})
 
-        # Check 3: Is this a student?
         student = Student.objects.filter(user=user).first()
         if student:
-            return Response({'role': 'student', 'courses': [...], ...})
-
-        return Response({'error': 'No profile found'}, status=400)
+            return Response({'role': 'student', ...})
 ```
 
-This single endpoint returns different data depending on who is asking:
-- **Admin** → gets admin dashboard data.
-- **Professor** → gets their profile + their courses for this semester.
-- **Student** → gets their profile + their enrolled courses.
-
-The frontend uses `role` to decide which dashboard to show.
+This is called after every login. The React frontend calls `/api/auth/me/` and gets the role back. Based on the role, it redirects:
+- `admin` → `/admin-dashboard`
+- `professor` → `/professor`
+- `student` → `/student`
 
 ---
 
-#### 👨‍💼 `AdminStudentViewSet` & `AdminProfessorViewSet`
-These are **ModelViewSets** — a powerful Django REST Framework class that automatically provides:
-- `GET /api/admin/students/` — list all students
-- `POST /api/admin/students/` — create a new student
-- `GET /api/admin/students/{id}/` — get one student
-- `PUT /api/admin/students/{id}/` — update a student
-- `DELETE /api/admin/students/{id}/` — delete a student
+## 8. Caching with Redis
 
-Plus custom actions:
-```python
-@action(detail=True, methods=['post'])
-def reset_password(self, request, pk=None):
-    student = self.get_object()
-    student.user.set_password('123456')
-    student.user.save()
-    return Response({'status': 'Password reset to default successfully'})
+### What is Caching?
+
+Caching = storing the result of an expensive operation so you can reuse it without doing the work again.
+
 ```
-This adds `POST /api/admin/students/{id}/reset_password/` automatically.
+Without cache:
+  Request → DB Query (50ms) → Response
+  Request → DB Query (50ms) → Response   ← same query, same answer, wasted work
+  Request → DB Query (50ms) → Response
 
----
-
-## 8. App: `courses` — Courses & Assignments
-
-### `courses/models.py`
-
-#### 📖 `Course` Model
-```python
-class Course(models.Model):
-    code       = models.CharField(max_length=20, unique=True)  # e.g. "CS301"
-    name       = models.CharField(max_length=100)               # e.g. "Data Structures"
-    department = models.ForeignKey(Department, ...)
-```
-A course belongs to a department. `unique=True` on `code` means no duplicate course codes.
-
----
-
-#### 📋 `CourseAssignment` Model
-```python
-class CourseAssignment(models.Model):
-    professor         = models.ForeignKey(Professor, ...)
-    course            = models.ForeignKey(Course, ...)
-    semester          = models.ForeignKey(Semester, ...)
-    expected_lectures = models.PositiveSmallIntegerField(default=15)
-
-    class Meta:
-        unique_together = ('professor', 'course', 'semester')
-```
-This is the **bridge table** that says "Professor X teaches Course Y in Semester Z."
-
-- `unique_together` — a professor cannot be assigned to the same course twice in the same semester.
-- `expected_lectures` — how many lectures the professor is *expected* to deliver. Used by the compliance tracking service.
-
----
-
-### `courses/serializers.py` — The Nested Assignment Serializer
-
-This is one of the most powerful serializers in the project:
-
-```python
-class NestedCourseAssignmentSerializer(serializers.Serializer):
-    """
-    One HTTP request creates the entire chain:
-    Department → Course → Professor (with User) → CourseAssignment
-    """
-    def create(self, validated_data):
-        with transaction.atomic():
-            department, _ = Department.objects.get_or_create(code=..., defaults={...})
-            course, _     = Course.objects.get_or_create(code=..., defaults={...})
-            # Professor: only create if doesn't exist
-            if not Professor.objects.filter(professor_id=...).exists():
-                user = User.objects.create(...)
-                professor = Professor.objects.create(user=user, ...)
-            semester = Semester.objects.get(name=...)
-            assignment, created = CourseAssignment.objects.get_or_create(...)
-        return {...}
+With cache:
+  Request → DB Query (50ms) → Cache → Response
+  Request → Cache HIT (1ms) → Response   ← instant! no DB needed
+  Request → Cache HIT (1ms) → Response
 ```
 
-**`get_or_create()`** — tries to find a record first; only creates it if it doesn't exist. This makes the operation **idempotent** — you can call it multiple times without creating duplicates. Perfect for seeding demo data.
-
----
-
-### `courses/tracking_service.py` — Lecture Compliance Monitor
-
-This service monitors whether professors are delivering enough lectures. It's called automatically every time a session is created.
-
-#### `calculate_coverage(assignment)` function
-```python
-def calculate_coverage(assignment):
-    actual = Session.objects.filter(
-        professor_id=assignment.professor_id,
-        course_id=assignment.course_id,
-        semester_id=assignment.semester_id,
-    ).annotate(
-        lecture_date=TruncDate('date_time')
-    ).values('lecture_date').distinct().count()  # Count unique DATES, not sessions!
-
-    expected = assignment.expected_lectures
-    pct = (actual / expected * 100)
-    ...
-```
-
-> **Teacher Note:** This counts **distinct lecture dates**, not raw session records. If a professor accidentally creates two sessions on the same day, it still counts as **one lecture**. This is the correct behavior.
-
-#### `check_and_notify(assignment)` function
-The main logic:
-```python
-# Rule 1: Hit 100%? Send congratulations!
-if coverage['pct'] >= 100:
-    # Only send once (guard check)
-    if not already_notified:
-        Notification.objects.create(type='congratulation', message='🎉 ...')
-
-# Rule 2: Behind schedule AND semester ending soon?
-days_left = (semester.end_date - today).days
-if coverage_fraction <= 0.70 and 0 < days_left <= 14:
-    if not already_notified:
-        Notification.objects.create(type='warning', message='⚠️ ...')
-```
-
-The `_notification_already_sent()` guard prevents sending the same notification twice. It checks for existing notifications with the same type in the same semester.
-
----
-
-## 9. App: `attendance` — The Heart of the System
-
-### `attendance/models.py`
-
-#### 📝 `Enrollment` Model
-```python
-class Enrollment(models.Model):
-    student  = models.ForeignKey(Student, ...)
-    course   = models.ForeignKey(Course, ...)
-    semester = models.ForeignKey(Semester, ...)
-
-    class Meta:
-        unique_together = ('student', 'course', 'semester')
-```
-This records "Student A is enrolled in Course B for Semester C." Without enrollment, the student cannot scan attendance for that course.
-
----
-
-#### 🖥️ `Session` Model
-```python
-class Session(models.Model):
-    course       = models.ForeignKey(Course, ...)
-    professor    = models.ForeignKey(Professor, ...)
-    semester     = models.ForeignKey(Semester, ...)
-    date_time    = models.DateTimeField(auto_now_add=True)   # Set automatically when created
-    qr_token     = models.CharField(max_length=100, unique=True)
-    qr_expires_at = models.DateTimeField()
-
-    def save(self, *args, **kwargs):
-        if not self.qr_token:
-            self.qr_token = str(uuid.uuid4())       # Generate random UUID
-        if not self.qr_expires_at:
-            self.qr_expires_at = now() + timedelta(minutes=15)  # Expire in 15 min
-        super().save(*args, **kwargs)
-```
-
-A Session is created when a professor *starts* a lecture. It automatically:
-- Generates a **UUID** (universally unique ID) as the QR token — something like `a3f1c2d4-...`
-- Sets expiry to **15 minutes** from now
-
-The QR code encodes this token. Students scan it to record attendance.
-
----
-
-#### ✅ `Attendance` Model
-```python
-class Attendance(models.Model):
-    STATUS_CHOICES = [('present', 'Present'), ('late', 'Late'), ('absent', 'Absent')]
-
-    session    = models.ForeignKey(Session, ...)
-    student    = models.ForeignKey(Student, ...)
-    course     = models.ForeignKey(Course, ...)   # Denormalized for fast queries
-    date       = models.DateField(auto_now_add=True)
-    scanned_at = models.DateTimeField(auto_now_add=True)
-    status     = models.CharField(choices=STATUS_CHOICES, default='present')
-
-    class Meta:
-        unique_together = ('student', 'course', 'date')  # ← THE key constraint!
-```
-
-**The most important line:** `unique_together = ('student', 'course', 'date')`
-
-This is a **database-level constraint** that says: a student can only have ONE attendance record per course per day. Even if the application code has a bug, the database itself will reject duplicate scans. This is defense in depth.
-
-The `save()` method auto-fills the `course` from the session:
-```python
-def save(self, *args, **kwargs):
-    if not self.course_id and self.session_id:
-        self.course = self.session.course   # Copy course from session
-    super().save(*args, **kwargs)
-```
-
----
-
-### `attendance/services.py` — The `record_attendance` Function
-
-This is the core business logic of the entire system. Let's walk through it step by step:
+### Your Redis Setup
 
 ```python
-def record_attendance(student_id: str, qr_token: str) -> dict:
-```
-
-**Input:** student's ID number + the token from the QR code.
-**Output:** a dict with `{'success': True/False, ...}`.
-
-#### Step 1: Fast Early Validation (millisecond-level checks)
-```python
-if not Session.objects.filter(qr_token=qr_token).exists():
-    return {'success': False, 'error': 'Invalid QR code.'}
-
-if not Student.objects.filter(student_id=student_id).exists():
-    return {'success': False, 'error': 'No student found.'}
-```
-Before doing any heavy work, we check if the token and student exist using cheap `EXISTS` queries on indexed columns. If they don't exist, we fail fast.
-
-#### Step 2: Load the Full Session & Check Expiry
-```python
-session = Session.objects.select_related('course', 'professor', 'semester').get(qr_token=qr_token)
-
-if session.qr_expires_at <= now:
-    return {'success': False, 'error': 'This QR code has expired.'}
-```
-`select_related(...)` loads the session AND its related course, professor, and semester in a **single SQL JOIN query** — instead of making 3 separate database calls.
-
-#### Step 3: Check Active Semester
-```python
-active_semester = Semester.objects.get(is_active=True)
-if session.semester != active_semester:
-    return {'success': False, 'error': 'Session does not belong to the current semester.'}
-```
-
-#### Step 4: Check Enrollment
-```python
-is_enrolled = Enrollment.objects.filter(
-    student_id=student.pk,
-    course_id=session.course_id,
-    semester_id=session.semester_id
-).exists()
-if not is_enrolled:
-    return {'success': False, 'error': 'Student is not enrolled.'}
-```
-A student cannot scan a QR for a course they aren't enrolled in.
-
-#### Step 5: One Scan Per Day
-```python
-already_scanned_today = Attendance.objects.filter(
-    student_id=student.pk,
-    course_id=session.course_id,
-    date=today,     # today's date
-).exists()
-if already_scanned_today:
-    return {'success': False, 'error': 'Already scanned today.'}
-```
-
-#### Step 6: Semester Quota Check
-```python
-total_lectures_quota = active_semester.total_lectures   # e.g. 15
-total_scans_so_far = Attendance.objects.filter(
-    student_id=student.pk,
-    course_id=session.course_id,
-    session__semester_id=active_semester.pk,
-).count()
-if total_scans_so_far >= total_lectures_quota:
-    return {'success': False, 'error': 'Maximum attendance limit reached.'}
-```
-Even if a student cheats and tries to scan after the semester is full, we block them here.
-
-#### Step 7: Save the Record (Atomic)
-```python
-try:
-    with transaction.atomic():
-        attendance = Attendance.objects.create(
-            session=session, student=student, status='present'
-        )
-except IntegrityError:
-    # DB unique constraint caught a race condition (two simultaneous scans)
-    return {'success': False, 'error': 'Already registered.'}
-```
-`transaction.atomic()` + catching `IntegrityError` is the **last line of defense** against race conditions (two requests hitting the server at the exact same millisecond).
-
-#### Final Response
-```python
-return {
-    'success': True,
-    'message': f'Attendance recorded for {student.name}.',
-    'attendance_id': attendance.id,
-    'scans_used': total_scans_so_far + 1,
-    'scans_remaining': total_lectures_quota - (total_scans_so_far + 1),
+CACHES = {
+    'default': {
+        'BACKEND': 'django_redis.cache.RedisCache',
+        'LOCATION': 'redis://redis:6379/0',
+        'OPTIONS': {
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 100,  # max 100 connections shared across all workers
+            },
+        }
+    }
 }
 ```
 
----
-
-## 10. Serializers — From Python to JSON
-
-Think of serializers as **translators**. When data lives in Python objects (Model instances), serializers convert them to JSON so the frontend can read them. When data comes from the frontend (JSON), serializers validate it and convert it to Python objects for saving.
-
-```
-Django Model → Serializer → JSON (sent to frontend)
-JSON (from frontend) → Serializer validates & deserializes → Django Model → .save()
-```
-
-### Key serializer patterns used in this project:
-
-#### Read-only computed fields
-```python
-department_name = serializers.CharField(source='department.name', read_only=True)
-```
-Instead of sending `department: 5` (just an ID), we also send `department_name: "Computer Science"`. The frontend doesn't need a second API call.
-
-#### Write-only fields
-```python
-password = serializers.CharField(write_only=True)
-```
-Password comes IN but never goes OUT in response data.
-
-#### Nested source traversal
-```python
-session_date = serializers.DateTimeField(source='session.date_time', read_only=True)
-```
-Follow the `session` foreign key and get `date_time` from it.
-
----
-
-## 11. Views — The Request Handlers
-
-### Two Types of Views Used
-
-#### 1. `APIView` — Manual control
-```python
-class AttendanceScanView(APIView):
-    def post(self, request):
-        # Full manual control of what happens
-        result = record_attendance(...)
-        if result['success']:
-            return Response(result, status=200)
-        return Response(result, status=400)
-```
-You write the `get()`, `post()`, `put()`, `delete()` methods yourself.
-
-#### 2. `ModelViewSet` — Automatic CRUD
-```python
-class AdminStudentViewSet(viewsets.ModelViewSet):
-    queryset = Student.objects.all()
-    serializer_class = AdminStudentSerializer
-    permission_classes = [IsAdminUser]
-```
-Django REST Framework automatically generates all 5 CRUD endpoints. Much less code.
-
-### Permission Classes — Who Can Access What?
-
-| Permission Class | Meaning |
-|-----------------|---------|
-| `AllowAny` | Anyone, even not logged in, can access |
-| `IsAuthenticated` | Must be logged in (valid JWT token) |
-| `IsAdminUser` | Must be an admin (`is_staff=True`) |
-
----
-
-### Key Views Explained
-
-#### `CourseAttendanceReportView`
-This view generates the full attendance matrix for a course. Here's the algorithm:
-
-1. **Get the course and active semester.**
-2. **Build `lecture_dates_map`** — a dict mapping `date → first session of that day`. This groups multiple sessions on the same day into one "lecture."
-3. **Get all enrolled students.**
-4. **Pre-fetch all attendance records** for those students in one query.
-5. **Build `attendance_map[(student_id, date)] = True`** for fast lookups.
-6. **For each student:** loop through all lecture dates, check the map, build the lecture list with Present/Absent status.
-7. **Calculate percentages** and return the full matrix.
+### Sessions in Redis
 
 ```python
-# The key grouping step:
-lecture_dates_map = {}  # date → first session of that day
-for sess in sessions:
-    dt = sess.date_time.date()
-    if dt not in lecture_dates_map:
-        lecture_dates_map[dt] = sess   # Only keep the first session per day
+SESSION_ENGINE = 'django.contrib.sessions.backends.cache'
+SESSION_CACHE_ALIAS = 'default'
 ```
 
-This prevents inflated lecture counts when a professor creates multiple sessions on the same day.
+Without this, every request would do: `SELECT * FROM django_session WHERE key=...` — a database read just to verify the session. With Redis, this becomes a memory lookup taking < 1ms.
 
-#### `SessionCreateView`
+### Cache in the QR Scan Service
+
+The smartest caching in your project is in `services.py`:
+
 ```python
-def post(self, request):
-    session = Session.objects.create(professor=professor, course=course, semester=semester)
+def record_attendance(student_id, qr_token):
+    cache_key = f"session_qr_{qr_token}"
+    session_data = cache.get(cache_key)   # check Redis first
 
-    # Fire compliance check in a background thread (non-blocking!)
-    t = threading.Thread(target=check_and_notify, args=(assignment,), daemon=True)
-    t.start()
+    if not session_data:
+        # Cache MISS — go to database (only happens ONCE per QR code)
+        session = Session.objects.get(qr_token=qr_token)
+        session_data = {
+            'session_id': session.id,
+            'course_id': session.course_id,
+            ...
+        }
+        cache.set(cache_key, session_data, 900)  # cache for 15 minutes
 
-    return Response(serializer.data, status=201)  # ← Returns immediately
+    # From here on: use session_data from Redis (0 DB queries)
 ```
 
-After creating the session, it fires the lecture compliance check **in a separate thread** so the professor's browser gets the response immediately without waiting for the compliance check to finish.
+**Why is this brilliant?**
+Imagine 200 students scanning at the same time. Without cache:
+- 200 students × 1 DB query to find the session = **200 database queries**
 
-#### `CourseExportView`
-Generates a downloadable CSV file:
+With cache:
+- Student #1 does 1 DB query, stores result in Redis
+- Students #2–200 read from Redis = **1 DB query total**
+
+That's a **200x reduction** in database load for the most common operation.
+
+---
+
+## 9. The QR Scan Service
+
+This is the heart of your system. Let's walk through `services.py` line by line:
+
 ```python
-response = HttpResponse(content_type='text/csv')
-writer = csv.writer(response)
-writer.writerow(['Student ID', 'Student Name', '2025-01-01', '2025-01-08', ...])
-for student in students:
-    writer.writerow([student.student_id, student.name, 'Present', 'Absent', ...])
-return response
+def record_attendance(student_id: str, qr_token: str) -> dict:
+    now = timezone.now()
+
+    # ── STEP 1: Is this QR code valid? ──
+    cache_key = f"session_qr_{qr_token}"
+    session_data = cache.get(cache_key)        # check Redis (fast)
+
+    if not session_data:                        # cache miss → go to DB
+        session = Session.objects.select_related('course', 'semester').get(qr_token=qr_token)
+        # ... validate, build session_data dict, store in cache ...
+        cache.set(cache_key, session_data, 900)
+
+    # ── STEP 2: Has the QR expired? ──
+    if session_data['expires_at'] <= now:
+        return {'success': False, 'error': 'This QR code has expired.'}
+
+    # ── STEP 3: Is this student enrolled? ──
+    # Smart: ONE query that checks BOTH student existence AND enrollment
+    student = Student.objects.filter(
+        student_id=student_id,
+        enrollments__course_id=session_data['course_id'],    # must be enrolled
+        enrollments__semester_id=session_data['semester_id'] # in the right semester
+    ).only('id', 'name').first()
+
+    if not student:
+        return {'success': False, 'error': 'Not enrolled in this course.'}
+
+    # ── STEP 4: INSERT — let the database handle duplicates ──
+    try:
+        Attendance.objects.create(
+            session_id=session_data['session_id'],
+            student_id=student.id,
+            course_id=session_data['course_id'],
+            status='present'
+        )
+    except IntegrityError:
+        # unique_together on (student, course, date) prevented duplicate
+        return {'success': False, 'error': 'Already recorded for today.'}
+
+    return {'success': True, 'message': f'Welcome, {student.name}!'}
 ```
-Instead of returning JSON, this returns a `.csv` file directly — the browser will download it.
+
+**The total database cost per scan:** 3 queries (1 first-time session lookup cached, 1 enrollment check, 1 INSERT). Under heavy load, the session lookup becomes 0 thanks to Redis, leaving just 2 queries per scan.
 
 ---
 
-## 12. URL Routing — How Requests Find Their Handler
+## 10. Best Practices Used in This Project
 
-The full URL map assembled from all `urls.py` files:
+Here is a summary of every professional technique used — and WHY it's considered best practice:
 
-### Authentication
-| Method | URL | Handler | Access |
-|--------|-----|---------|--------|
-| POST | `/api/auth/login/` | `TokenObtainPairView` | Anyone |
-| POST | `/api/auth/refresh/` | `TokenRefreshView` | Anyone |
-| GET | `/api/auth/me/` | `MeView` | Authenticated |
-| POST | `/api/auth/change-password/` | `ChangePasswordView` | Authenticated |
-
-### Core
-| Method | URL | Handler | Access |
-|--------|-----|---------|--------|
-| GET | `/api/departments/` | `DepartmentListView` | Anyone |
-| GET | `/api/semesters/` | `SemesterListView` | Anyone |
-| GET | `/api/semesters/active/` | `ActiveSemesterView` | Anyone |
-| GET | `/api/stats/` | `StatsView` | Anyone |
-| GET/POST/PUT/DELETE | `/api/admin/semesters/` | `AdminSemesterViewSet` | Admin |
-
-### Accounts
-| Method | URL | Handler | Access |
-|--------|-----|---------|--------|
-| GET | `/api/students/` | `StudentListView` | Anyone |
-| GET | `/api/professors/` | `ProfessorListView` | Anyone |
-| GET | `/api/professor/{id}/courses/` | `ProfessorCoursesView` | Anyone |
-| GET/POST/PUT/DELETE | `/api/admin/students/` | `AdminStudentViewSet` | Admin |
-| POST | `/api/admin/students/{id}/reset_password/` | custom action | Admin |
-| GET/POST/PUT/DELETE | `/api/admin/professors/` | `AdminProfessorViewSet` | Admin |
-
-### Courses
-| Method | URL | Handler | Access |
-|--------|-----|---------|--------|
-| GET | `/api/courses/` | `CourseListView` | Anyone |
-| POST | `/api/courses/admin/nested-assign/` | `NestedAssignmentCreateView` | Admin |
-| GET/POST/PUT/DELETE | `/api/admin/courses/` | `AdminCourseViewSet` | Admin |
-| GET/POST/PUT/DELETE | `/api/admin/assignments/` | `AdminCourseAssignmentViewSet` | Admin |
-
-### Attendance
-| Method | URL | Handler | Access |
-|--------|-----|---------|--------|
-| POST | `/api/sessions/create/` | `SessionCreateView` | Anyone |
-| GET | `/api/sessions/course/{id}/` | `CourseSessionsView` | Authenticated (Professor) |
-| GET | `/api/sessions/{id}/qr/` | `SessionQRView` | Anyone |
-| POST | `/api/sessions/{id}/refresh-qr/` | `SessionRefreshQRView` | Anyone |
-| POST | `/api/attendance/scan/` | `AttendanceScanView` | Anyone |
-| GET | `/api/attendance/session/{id}/` | `SessionAttendanceListView` | Anyone |
-| GET | `/api/attendance/report/` | `AttendanceReportView` | Anyone |
-| GET | `/api/attendance/session-report/` | `SessionReportView` | Anyone |
-| GET | `/api/attendance/course-report/{id}/` | `CourseAttendanceReportView` | Anyone |
-| GET | `/api/export/course/{id}/` | `CourseExportView` | Authenticated |
-| GET | `/api/student/{id}/courses/` | `StudentCoursesView` | Anyone |
-| GET/POST/PUT/DELETE | `/api/admin/enrollments/` | `AdminEnrollmentViewSet` | Admin |
+| Technique | Where Used | Why It's Good |
+|---|---|---|
+| **`select_related()`** | All views with FK lookups | Turns N+1 queries into 1 JOIN query |
+| **`db_index=True`** | `Session.qr_token` | Makes lookup by QR token 100x faster |
+| **`unique_together`** | Enrollment, Attendance | Database-level data integrity, no duplicates ever |
+| **`transaction.atomic()`** | Student/Professor creation | If one insert fails, all fail — no ghost records |
+| **Redis session cache** | `settings.py` | Removes DB hit on every single request |
+| **Cache-aside pattern** | `services.py` | 1 DB query for 200 simultaneous scans instead of 200 |
+| **JWT authentication** | All protected views | Stateless, no DB hit to verify auth |
+| **PBKDF2 hashing** | `settings.py` | Brute force attacks become computationally infeasible |
+| **IsAuthenticated default** | `settings.py` | Secure by default — must opt-in to public endpoints |
+| **`IntegrityError` catch** | `services.py` | Race condition safe — two scans at same time → only one wins |
+| **`auto_now_add=True`** | `date_time`, `scanned_at` | DB sets timestamp, not the application — cannot be spoofed |
+| **`only('id', 'name')`** | Student enrollment query | Fetches only needed columns — less memory, faster query |
+| **Daemon threads** | Session compliance check | Background work doesn't block the HTTP response |
+| **`CONN_MAX_AGE=600`** | `settings.py` | Persistent DB connections — no reconnect cost per request |
 
 ---
 
-## 13. The QR Attendance Flow — Step by Step
+## Final Summary — The Request Lifecycle
 
-This is the main feature. Here is the complete flow:
-
-```
-┌──────────────────────────────────────────────────────────────────┐
-│  PROFESSOR SIDE                                                    │
-│                                                                    │
-│  1. Professor opens course page in browser                        │
-│  2. Clicks "Start Session"                                        │
-│  3. Frontend: POST /api/sessions/create/                          │
-│     { professor_id: 5, course_id: 3 }                            │
-│                                                                    │
-│  4. Backend:                                                       │
-│     - Creates Session record in DB                                │
-│     - Auto-generates UUID as qr_token e.g. "a3f1-c2d4-..."      │
-│     - Sets qr_expires_at = now + 15 minutes                      │
-│     - Fires compliance check in background thread                 │
-│     - Returns: { id: 42, qr_token: "a3f1...", ... }             │
-│                                                                    │
-│  5. Frontend: GET /api/sessions/42/qr/                            │
-│  6. Backend: generates QR code image (PNG) from qr_token         │
-│     Returns: { qr_code: "data:image/png;base64,..." }            │
-│                                                                    │
-│  7. Professor shows QR on projector/screen                        │
-└──────────────────────────────────────────────────────────────────┘
-                          ↓ (students scan)
-
-┌──────────────────────────────────────────────────────────────────┐
-│  STUDENT SIDE                                                      │
-│                                                                    │
-│  1. Student opens app on phone, goes to course page               │
-│  2. Clicks "Scan QR"                                              │
-│  3. Camera reads QR → extracts the token "a3f1-c2d4-..."        │
-│  4. Frontend: POST /api/attendance/scan/                          │
-│     { student_id: "S12345", qr_token: "a3f1-c2d4-..." }        │
-│                                                                    │
-│  5. Backend runs record_attendance():                             │
-│     ✓ Check token exists                                          │
-│     ✓ Check student exists                                        │
-│     ✓ Check QR not expired                                        │
-│     ✓ Check active semester matches                               │
-│     ✓ Check student is enrolled in this course                   │
-│     ✓ Check not already scanned today                            │
-│     ✓ Check under semester quota                                  │
-│     ✓ Create Attendance record (atomic)                           │
-│     Returns: { success: true, message: "Attendance recorded!" }  │
-│                                                                    │
-│  6. Student sees green "✓ Attendance Recorded!" on screen        │
-└──────────────────────────────────────────────────────────────────┘
-```
-
-### QR Refresh
-If the QR expires during class (15 min), the professor can refresh it:
-```
-POST /api/sessions/42/refresh-qr/
-→ Backend generates new UUID, updates qr_expires_at
-→ Returns new token
-→ Frontend re-fetches the QR image
-```
-
----
-
-## 14. The Lecture Tracking Service
-
-Found in `courses/tracking_service.py`. This system monitors whether professors are on track.
-
-### How it's triggered:
-Every time a professor creates a session, `SessionCreateView` fires:
-```python
-t = threading.Thread(target=check_and_notify, args=(assignment,), daemon=True)
-t.start()
-```
-It runs in the **background** — the professor's response is not delayed.
-
-### What it checks:
+Let's trace one complete request: **A student scans a QR code**
 
 ```
-lectures_delivered        15
-Coverage % = ──────────────────── × 100  =  ─── × 100 = 100%
-             expected_lectures             15
+1. Student's phone camera reads the QR → gets the UUID token
+
+2. React frontend sends:
+   POST /api/attendance/scan/
+   Authorization: Bearer eyJ...token
+   { "student_id": "STU0042", "qr_token": "abc-123-uuid" }
+
+3. Nginx forwards to backend:8000
+
+4. Gunicorn picks it up, sends to Django
+
+5. JWT middleware decodes the token → identifies user (no DB query)
+
+6. permission_classes = [IsAuthenticated] → PASS (token is valid)
+
+7. AttendanceScanView.post() runs:
+   → calls record_attendance("STU0042", "abc-123-uuid")
+
+8. record_attendance() service:
+   a. Check Redis: "session_qr_abc-123-uuid" → MISS (first scan)
+   b. DB Query: SELECT session WHERE qr_token="abc-123-uuid" (1 query)
+   c. Store in Redis for 15 minutes
+   d. Check expiry → OK
+   e. DB Query: SELECT student WHERE student_id="STU0042" AND enrolled (1 query)
+   f. DB Query: INSERT INTO attendance (...) (1 query)
+   → Returns {'success': True, 'message': 'Welcome, Ahmed!'}
+
+9. AttendanceScanView returns:
+   HTTP 200 { "success": true, "message": "Welcome, Ahmed!" }
+
+10. Student's phone shows: ✅ Attendance Recorded
+
+Total database queries: 3 (or 2 if QR was already cached)
+Total time: ~15ms
 ```
 
-| Scenario | Action |
-|----------|--------|
-| Coverage ≥ 100% | 🎉 Send CONGRATULATION notification (once per semester) |
-| Coverage ≤ 70% AND semester ends within 14 days | ⚠️ Send WARNING notification (once per semester) |
-| Any other case | No action |
-
-### Duplicate prevention:
-```python
-def _notification_already_sent(professor_id, notification_type, semester_id):
-    return Notification.objects.filter(
-        professor_id=professor_id,
-        notification_type=notification_type,
-        message__startswith=f'[SEM-{semester_id}]',
-    ).exists()
-```
-Before sending any notification, we check if one was already sent this semester. If yes, we skip it.
-
----
-
-## 15. Authentication — JWT Tokens
-
-### How Login Works:
-
-```
-1. User submits { username: "S12345", password: "secret" }
-   → POST /api/auth/login/
-
-2. Django verifies password (checks hash in DB)
-
-3. If correct, SimpleJWT generates TWO tokens:
-   {
-     "access":  "eyJ0eXA...(long string)...",   ← Valid 8 hours
-     "refresh": "eyJ0eXA...(different long string)..."  ← Valid 7 days
-   }
-
-4. Frontend stores these tokens (usually in localStorage)
-
-5. For all future API calls, frontend sends:
-   Authorization: Bearer eyJ0eXA...
-
-6. Django middleware reads the token, decodes it, identifies the user
-   (no database lookup needed for the user identity!)
-
-7. When access token expires (8 hours later):
-   POST /api/auth/refresh/ { "refresh": "eyJ0eXA..." }
-   → Returns new access token
-   → User doesn't need to log in again
-```
-
-### Why is JWT better than traditional sessions?
-- **Sessions** store user data on the server. With 1000 users, that's a lot of server memory.
-- **JWT** stores the data inside the token itself (encrypted/signed). The server just verifies the signature — no lookup needed. Scales perfectly to 1000s of users.
-
----
-
-## 16. Docker & Startup — `entrypoint.sh`
-
-When the Docker container starts, `entrypoint.sh` runs these steps **in order**:
-
-### Step 1: Wait for PostgreSQL
-```bash
-python - <<'PYEOF'
-# Tries to connect to PostgreSQL up to 30 times (every 2 seconds = up to 60s)
-# If it can't connect, the script aborts (Docker will restart the container)
-PYEOF
-```
-Without this, Django would crash on startup if the database wasn't ready yet.
-
-### Step 2: Django Management Commands
-```bash
-python manage.py makemigrations --noinput  # Generate migration files from models
-python manage.py migrate --noinput         # Apply migrations to the database
-python manage.py collectstatic --noinput   # Copy static files to STATIC_ROOT
-python manage.py seed_demo                 # Load demo data (professors, courses, etc.)
-```
-**Migrations** are like version control for your database schema. Every time you add/change a model, you create a migration. `migrate` applies pending migrations to bring the DB up to date.
-
-### Step 3: Create Superuser
-```bash
-python manage.py shell -c "
-user, created = U.objects.get_or_create(username='admin', ...)
-user.set_password('Admin@1234')
-user.save()
-"
-```
-Creates the `admin` user with password `Admin@1234` if it doesn't already exist. Idempotent — safe to run multiple times.
-
-### Step 4: Seed Test Students
-```bash
-python manage.py seed_test_students --count 1000
-```
-Creates 1000 student accounts for load-testing. These are used with Locust to simulate 1000 concurrent users scanning attendance.
-
-### Step 5: Start Gunicorn
-```bash
-gunicorn config.wsgi:application \
-    --bind 0.0.0.0:8000 \
-    --workers 9 \
-    --worker-class gthread \
-    --threads 2 \
-    --timeout 120 \
-    ...
-```
-**Gunicorn** is the production web server that runs Django. Let's decode these settings:
-
-| Setting | Value | Meaning |
-|---------|-------|---------|
-| `--workers 9` | 9 | 9 separate Python processes (uses multiple CPU cores) |
-| `--worker-class gthread` | gthread | Each worker uses native OS threads (not async) |
-| `--threads 2` | 2 | Each worker handles 2 requests simultaneously |
-| Total capacity | 9 × 2 = 18 | 18 concurrent requests at once |
-| `--timeout 120` | 120s | Request timeout (covers slow report generation) |
-| `--max-requests 1000` | 1000 | Worker restarts after 1000 requests (prevents memory leaks) |
-
----
-
-## 17. Complete API Reference Table
-
-### Quick Summary of All Endpoints
-
-```
-Base URL: http://your-server:8000
-
-AUTH:
-  POST   /api/auth/login/                    → Get JWT tokens
-  POST   /api/auth/refresh/                  → Refresh access token
-  GET    /api/auth/me/                       → Get my profile & role
-  POST   /api/auth/change-password/          → Change my password
-
-CORE:
-  GET    /api/departments/                   → List departments
-  GET    /api/semesters/                     → List all semesters
-  GET    /api/semesters/active/              → Get active semester
-  GET    /api/stats/                         → Dashboard statistics
-  CRUD   /api/admin/semesters/               → Manage semesters (admin)
-
-ACCOUNTS:
-  GET    /api/students/                      → List students
-  GET    /api/professors/                    → List professors
-  GET    /api/professor/{id}/courses/        → Professor's courses this semester
-  CRUD   /api/admin/students/                → Manage students (admin)
-  POST   /api/admin/students/{id}/reset_password/  → Reset to '123456' (admin)
-  POST   /api/admin/students/{id}/set_custom_password/  → Set custom pass (admin)
-  CRUD   /api/admin/professors/              → Manage professors (admin)
-
-COURSES:
-  GET    /api/courses/                       → List all courses
-  POST   /api/courses/admin/nested-assign/  → One-shot course setup (admin)
-  CRUD   /api/admin/courses/                → Manage courses (admin)
-  CRUD   /api/admin/assignments/             → Manage assignments (admin)
-
-ATTENDANCE:
-  POST   /api/sessions/create/              → Professor starts a session
-  GET    /api/sessions/course/{id}/         → Sessions for a course (professor)
-  GET    /api/sessions/{id}/qr/             → Get QR code image
-  POST   /api/sessions/{id}/refresh-qr/    → Refresh QR token
-  POST   /api/attendance/scan/             → Student scans QR
-  GET    /api/attendance/session/{id}/     → List who attended a session
-  GET    /api/attendance/report/           → Legacy filtered report
-  GET    /api/attendance/session-report/   → Per-session report
-  GET    /api/attendance/course-report/{course_id}/  → Full course matrix
-  GET    /api/export/course/{id}/           → Download CSV
-  GET    /api/student/{id}/courses/         → Student's courses + attendance stats
-  CRUD   /api/admin/enrollments/            → Manage enrollments (admin)
-```
-
----
-
-## 🎓 Final Summary — The Big Picture
-
-The backend is a **Django REST API** that serves as the brain of the attendance system. Here's the full data flow:
-
-```
-Admin uses React Dashboard
-   → Creates semesters, departments, courses, assigns professors, enrolls students
-   → All stored in PostgreSQL via Django REST API
-
-Professor logs in
-   → Gets JWT tokens from /api/auth/login/
-   → Calls /api/auth/me/ → gets role='professor' + their courses
-   → Creates a session (POST /api/sessions/create/)
-   → Shows QR code on screen (GET /api/sessions/{id}/qr/)
-
-Student logs in
-   → Gets JWT tokens
-   → Calls /api/auth/me/ → gets role='student' + enrolled courses
-   → Scans QR code (POST /api/attendance/scan/)
-   → Backend runs 7 validation checks
-   → Attendance recorded in DB
-
-Admin reviews
-   → GET /api/attendance/course-report/{id}/ → full matrix
-   → GET /api/export/course/{id}/ → downloads CSV
-
-Tracking Service (automatic)
-   → Every session creation → background thread checks lecture compliance
-   → If professor hits 100% → 🎉 notification
-   → If professor is behind + semester ending → ⚠️ warning
-```
-
-Every decision in this backend — from `unique_together` constraints, to background threads, to `select_related` for query optimization, to `transaction.atomic()` for data integrity — was made with **correctness**, **performance**, and **security** in mind.
-
----
-
-*Document generated for the Alarab Attendance System — April 2026*
+That's the entire system — from student's camera to database — in 10 steps and 15 milliseconds. 🎯

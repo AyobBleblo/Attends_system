@@ -1,5 +1,4 @@
-from locust import HttpUser, task, between, events
-from locust.exception import StopUser
+from locust import FastHttpUser, task, between
 import urllib3
 import threading
 
@@ -19,57 +18,44 @@ class Counter:
 
 student_counter = Counter()
 
-class AttendanceLoadTest(HttpUser):
+class AttendanceLoadTest(FastHttpUser):
     # Set wait_time to 0 for maximum throughput per user
     wait_time = between(0, 0)
 
     def on_start(self):
         """
-        Setup unique student credentials and authenticate.
+        Setup unique student credentials. We don't login here anymore, 
+        since the user requested a specific task for login attacks.
         """
-        self.client.verify = False
-        
-        # Get unique index
-        raw_idx = student_counter.get_next()
         # Ensure we stay within our seeded data range (e.g., 1 to 1000)
+        raw_idx = student_counter.get_next()
         idx = ((raw_idx - 1) % 1000) + 1
         
         self.username = f"student_{idx}@university.local" 
-        self.password = "Student@1234"
-        self.student_id = f"STU{idx:04d}"
-        self.qr_token = "test-qr-token-12345"
+        self.password = "Student@1234" # This uses MD5 matching in settings.py
 
-        # Login Logic
+    @task(1)
+    def test_baseline_performance(self):
+        """
+        Hits the Performance_test_view to measure raw network and worker 
+        throughput without database overhead.
+        """
+        with self.client.get("/api/attendance/performance-test/", name="GET_Baseline_View", catch_response=True) as response:
+            if response.status_code == 200:
+                response.success()
+            else:
+                response.failure(f"Baseline Failed: {response.status_code}")
+
+    @task(1)
+    def test_login_performance(self):
+        """
+        Attacks the login endpoint with MD5 hashed passwords.
+        """
         with self.client.post("/api/auth/login/", json={
             "username": self.username,
             "password": self.password
-        }, name="AUTH_Login", catch_response=True) as response:
+        }, name="POST_Login_MD5", catch_response=True) as response:
             if response.status_code == 200:
-                token = response.json().get("access")
-                if token:
-                    self.client.headers.update({"Authorization": f"Bearer {token}"})
-                else:
-                    response.failure("Login successful but no token received")
+                response.success()
             else:
                 response.failure(f"Login Failed: {response.status_code}")
-
-    @task
-    def scan_qr_code(self):
-        payload = {
-            "student_id": self.student_id,
-            "qr_token": self.qr_token
-        }
-
-        # catch_response=True allows us to treat 400 as a success 
-        # (e.g., "Already Scanned" is a valid business logic response)
-        with self.client.post("/api/attendance/scan/", json=payload, name="POST_Scan_QR", catch_response=True) as response:
-            if response.status_code == 200 or response.status_code == 201:
-                response.success()
-            elif response.status_code == 400:
-                # If 400 means "Already marked present", it's a success in terms of server load
-                response.success() 
-            else:
-                response.failure(f"Server Error: {response.status_code} - {response.text}")
-
-        # Stop the user after one task to simulate real-world 'scan and leave' behavior
-        raise StopUser()

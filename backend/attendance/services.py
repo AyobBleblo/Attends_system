@@ -1,93 +1,80 @@
 from django.utils import timezone
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError
+from django.core.cache import cache
 from core.models import Semester
 from accounts.models import Student
 from courses.models import CourseAssignment
 from attendance.models import Session, Enrollment, Attendance
 
-
 def record_attendance(student_id: str, qr_token: str) -> dict:
     now = timezone.now()
-    today = now.date()
 
-    # ── EARLY EXIT: Fast indexed validation before any heavy logic ────────
-    #    These EXISTS queries hit indexed columns and return in < 1ms.
-    #    Rejects invalid tokens/students before loading full objects.
-    if not Session.objects.filter(qr_token=qr_token).exists():
-        return {'success': False, 'error': 'Invalid QR code. No session found.'}
+    # ── 1. FAST REDIS CACHE (0 DB Queries for 999 out of 1000 students) ──
+    cache_key = f"session_qr_{qr_token}"
+    session_data = cache.get(cache_key)
 
-    if not Student.objects.filter(student_id=student_id).exists():
-        return {'success': False, 'error': f'No student found with ID: {student_id}'}
+    if not session_data:
+        try:
+            session = Session.objects.select_related('course', 'semester').get(qr_token=qr_token)
+            active_semester = Semester.objects.get(is_active=True)
+            
+            if session.semester_id != active_semester.id:
+                return {'success': False, 'error': 'Session does not belong to the current active semester.'}
+            
+            is_assigned = CourseAssignment.objects.filter(
+                professor_id=session.professor_id, course_id=session.course_id, semester_id=active_semester.id
+            ).exists()
+            
+            if not is_assigned:
+                return {'success': False, 'error': 'Professor is not assigned to this course.'}
+                
+            session_data = {
+                'session_id': session.id,
+                'course_id': session.course_id,
+                'semester_id': active_semester.id,
+                'expires_at': session.qr_expires_at,
+                'quota': active_semester.total_lectures
+            }
+            # Cache the validated session data for 15 minutes (lifetime of the QR)
+            cache.set(cache_key, session_data, 900)
+            
+        except Session.DoesNotExist:
+            return {'success': False, 'error': 'Invalid QR code. No session found.'}
+        except Semester.DoesNotExist:
+            return {'success': False, 'error': 'No active semester found.'}
 
-    # 1. Find Session by qr_token (full object needed for subsequent checks)
-    session = Session.objects.select_related('course', 'professor', 'semester').get(qr_token=qr_token)
-
-    # 2. Check QR not expired
-    if session.qr_expires_at <= now:
+    if session_data['expires_at'] <= now:
         return {'success': False, 'error': 'This QR code has expired.'}
 
-    # 3. Check active semester matches session semester
-    try:
-        active_semester = Semester.objects.get(is_active=True)
-        if session.semester != active_semester:
-            return {'success': False, 'error': 'Session does not belong to the current active semester.'}
-    except Semester.DoesNotExist:
-        return {'success': False, 'error': 'No active semester found.'}
+    # ── 2. SINGLE-QUERY STUDENT & ENROLLMENT CHECK (1 DB Query) ──
+    student = Student.objects.filter(
+        student_id=student_id,
+        enrollments__course_id=session_data['course_id'],
+        enrollments__semester_id=session_data['semester_id']
+    ).only('id', 'name').first()
 
-    # Find the Student (already validated via early-exit above)
-    student = Student.objects.only('id', 'student_id', 'name').get(student_id=student_id)
+    if not student:
+        return {'success': False, 'error': f'Student not found or not enrolled in this course.'}
 
-    # 4. Check the Student is enrolled in the Session's course
-    #    Using _id FK shortcuts avoids re-fetching related objects
-    is_enrolled = Enrollment.objects.filter(
-        student_id=student.pk, course_id=session.course_id, semester_id=session.semester_id
-    ).exists()
-    if not is_enrolled:
-        return {'success': False, 'error': f'Student is not enrolled in {session.course.code}.'}
-
-    # Check professor assignment (optional safety check)
-    is_assigned = CourseAssignment.objects.filter(
-        professor_id=session.professor_id, course_id=session.course_id, semester_id=session.semester_id
-    ).exists()
-    if not is_assigned:
-        return {'success': False, 'error': 'Professor is not assigned to this course.'}
-
-    # ── VALIDATION 1: One scan per day ────────────────────────────────────
-    # The DB-level unique_together ('student', 'course', 'date') already enforces
-    # this at the integrity level, but we pre-check here for a clean error message.
-    already_scanned_today = Attendance.objects.filter(
-        student_id=student.pk,
-        course_id=session.course_id,
-        date=today,
-    ).exists()
-    if already_scanned_today:
-        return {
-            'success': False,
-            'error': 'You have already scanned your attendance for this course today. Only one scan per day is allowed.'
-        }
-
-    # ── VALIDATION 2: Total scans ≤ semester lecture quota ────────────────
-    total_lectures_quota = active_semester.total_lectures
+    # ── 3. LECTURE QUOTA CHECK (1 DB Query) ──
     total_scans_so_far = Attendance.objects.filter(
-        student_id=student.pk,
-        course_id=session.course_id,
-        session__semester_id=active_semester.pk,
+        student_id=student.id,
+        course_id=session_data['course_id'],
+        session__semester_id=session_data['semester_id']
     ).count()
-    if total_scans_so_far >= total_lectures_quota:
-        return {
-            'success': False,
-            'error': (
-                f'You have reached the maximum attendance limit for this course '
-                f'({total_lectures_quota} lectures). No further scans are allowed.'
-            )
-        }
 
-    # 5. Create the Attendance record (atomic block keeps connection clean on IntegrityError)
+    if total_scans_so_far >= session_data['quota']:
+        return {'success': False, 'error': 'Maximum attendance limit reached.'}
+
+    # ── 4. RAW INSERT CATCHING DUPLICATES (1 DB Query) ──
     try:
-        with transaction.atomic():
-            attendance = Attendance.objects.create(
-                session=session, student=student, status='present'
-            )
+        # DB-level unique_together handles the "one scan per day" rule natively.
+        attendance = Attendance.objects.create(
+            session_id=session_data['session_id'],
+            student_id=student.id,
+            course_id=session_data['course_id'],  # ← prevents save() from issuing 2 hidden SELECTs
+            status='present'
+        )
     except IntegrityError:
         return {'success': False, 'error': 'You have already registered your attendance for this lecture.'}
 
@@ -96,5 +83,5 @@ def record_attendance(student_id: str, qr_token: str) -> dict:
         'message': f'Attendance recorded for {student.name}.',
         'attendance_id': attendance.id,
         'scans_used': total_scans_so_far + 1,
-        'scans_remaining': total_lectures_quota - (total_scans_so_far + 1),
+        'scans_remaining': session_data['quota'] - (total_scans_so_far + 1),
     }

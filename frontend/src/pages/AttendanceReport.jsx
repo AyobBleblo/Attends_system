@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence } from 'framer-motion';
 import api from '../api/axios';
 import { Download, BookOpen, ClipboardList, ChevronDown, ChevronUp, Search, RefreshCw } from 'lucide-react';
 
@@ -604,28 +605,64 @@ export default function AttendanceReport() {
         </p>
       </div>
 
-      {/* Tab bar */}
+      {/* ── Tab bar — gold accent on deep-black active state ── */}
       <div style={{
         display: 'flex', gap: '0.25rem', marginBottom: '1.5rem',
         background: 'rgba(255,255,255,0.04)', padding: '0.3rem', borderRadius: 12,
-        border: `1px solid ${T.border}`, width: 'fit-content',
+        border: `1px solid ${T.border}`, width: 'fit-content', position: 'relative',
       }}>
-        {TABS.map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setTab(id)}
-            style={{
-              padding: '0.55rem 1.2rem', borderRadius: 9, fontSize: '0.85rem', fontWeight: 600,
-              border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
-              transition: 'all 0.2s',
-              background: tab === id ? T.goldDim : 'transparent',
-              color: tab === id ? T.gold : T.textMuted,
-              boxShadow: tab === id ? `0 0 0 1px ${T.goldBorder}` : 'none',
-            }}
-          >
-            <Icon size={15} /> {label}
-          </button>
-        ))}
+        {TABS.map(({ id, label, icon: Icon }) => {
+          const isActive = tab === id;
+          return (
+            <motion.button
+              key={id}
+              onClick={() => setTab(id)}
+              whileTap={{ scale: 0.94 }}
+              transition={{ type: 'spring', stiffness: 400, damping: 20 }}
+              style={{
+                position: 'relative',
+                padding: '0.55rem 1.25rem',
+                borderRadius: 9,
+                fontSize: '0.85rem',
+                fontWeight: 700,
+                // Using inline style ensures the active colour is set by React
+                // state — it will NEVER revert on click/blur like a CSS rule would.
+                background: isActive ? T.bg : 'transparent',
+                color:      isActive ? T.gold : T.textMuted,
+                border:     isActive ? `1px solid ${T.goldBorder}` : '1px solid transparent',
+                boxShadow:  isActive
+                  ? `0 0 12px 2px rgba(212,175,55,0.18), inset 0 0 0 1px ${T.goldBorder}`
+                  : 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: 6,
+                outline: 'none',
+                // Smooth colour cross-fade for inactive→active
+                transition: 'color 0.2s, background 0.2s, box-shadow 0.25s, border-color 0.2s',
+              }}
+            >
+              <Icon size={15} />
+              {label}
+              {/* Animated gold underline indicator */}
+              {isActive && (
+                <motion.span
+                  layoutId="reportTabUnderline"
+                  style={{
+                    position: 'absolute',
+                    bottom: 4,
+                    left: '20%',
+                    right: '20%',
+                    height: 2,
+                    borderRadius: 99,
+                    background: T.gold,
+                  }}
+                  transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+                />
+              )}
+            </motion.button>
+          );
+        })}
       </div>
 
       {/* Tab content */}
