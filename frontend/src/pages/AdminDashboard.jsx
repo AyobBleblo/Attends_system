@@ -128,10 +128,16 @@ const AdminDashboard = () => {
   const [formData, setFormData] = useState({});
   const [formError, setFormError] = useState(null);
   const [formLoading, setFormLoading] = useState(false);
+
+  // Pagination state (students tab is the only paginated endpoint)
+  const [page, setPage] = useState(1);
+  const [pageCount, setPageCount] = useState(1);
+  const [totalCount, setTotalCount] = useState(0);
+  const PAGE_SIZE = 25;
   
   const [searchQuery, setSearchQuery] = useState('');
   const [showPasswordModal, setShowPasswordModal] = useState(false);
-  const [selectedUser, setSelectedUser] = useState(null); // { id, type: 'students' | 'professors', name }
+  const [selectedUser, setSelectedUser] = useState(null);
   const [customPassword, setCustomPassword] = useState('');
 
   // Relation data for dropdowns
@@ -142,26 +148,41 @@ const AdminDashboard = () => {
   const [allDepartments, setAllDepartments] = useState([]);
 
   // ── Fetch table data ────────────────────────────────────────────────────────
-  const fetchData = useCallback(async (tab, search = searchQuery) => {
+  const fetchData = useCallback(async (tab, search = searchQuery, pg = page) => {
     setLoading(true);
     try {
-      const qs = search ? `?search=${encodeURIComponent(search)}` : '';
+      let qs = search ? `?search=${encodeURIComponent(search)}` : '?';
+      // Students endpoint is paginated
+      if (tab === 'students') {
+        qs += `${search ? '&' : ''}page=${pg}&page_size=${PAGE_SIZE}`;
+      }
       const res = await api.get(`${EP[tab]}${qs}`);
-      setData(prev => ({ ...prev, [tab]: res.data }));
+      // Paginated response has { count, next, previous, results }
+      if (tab === 'students' && res.data?.results !== undefined) {
+        setData(prev => ({ ...prev, [tab]: res.data.results }));
+        setTotalCount(res.data.count ?? 0);
+        setPageCount(Math.ceil((res.data.count ?? 0) / PAGE_SIZE));
+      } else {
+        setData(prev => ({ ...prev, [tab]: res.data }));
+      }
     } catch (e) {
       console.error(e);
-    }
-    finally { setLoading(false); }
-  }, [searchQuery]);
+    } finally { setLoading(false); }
+  }, [searchQuery, page]);
 
-  // Handle Search Debounce
+  // Handle Search Debounce — reset to page 1 on new search
   useEffect(() => {
     const delayDebounceFn = setTimeout(() => {
-      fetchData(activeTab, searchQuery);
+      setPage(1);
+      fetchData(activeTab, searchQuery, 1);
     }, 400);
-
     return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery, activeTab, fetchData]);
+  }, [searchQuery, activeTab]);
+
+  // Re-fetch when page changes (students tab)
+  useEffect(() => {
+    if (activeTab === 'students') fetchData('students', searchQuery, page);
+  }, [page]);
 
 
   // ── Fetch stats ─────────────────────────────────────────────────────────────
@@ -169,13 +190,14 @@ const AdminDashboard = () => {
     setStatsLoading(true);
     try {
       const [studentsRes, professorsRes, coursesRes, enrollmentsRes] = await Promise.all([
-        api.get(EP.students),
+        api.get(`${EP.students}?page=1&page_size=1`),
         api.get(EP.professors),
         api.get(EP.courses),
         api.get(EP.enrollments),
       ]);
       setCounts({
-        students:    studentsRes.data.length,
+        // Paginated endpoint returns { count, results }
+        students:    studentsRes.data?.count ?? studentsRes.data?.length ?? 0,
         professors:  professorsRes.data.length,
         courses:     coursesRes.data.length,
         enrollments: enrollmentsRes.data.length,
@@ -184,18 +206,18 @@ const AdminDashboard = () => {
     finally { setStatsLoading(false); }
   }, []);
 
-  // ── Load relations for dropdowns ────────────────────────────────────────────
   const loadRelations = useCallback(async () => {
     try {
+      // Need a larger page size to fetch students for the dropdown if paginated
       const [st, pr, co, sem, dept] = await Promise.all([
-        api.get(EP.students).catch(() => ({ data: [] })),
+        api.get(`${EP.students}?page=1&page_size=1000`).catch(() => ({ data: { results: [] } })),
         api.get(EP.professors).catch(() => ({ data: [] })),
         api.get(EP.courses).catch(() => ({ data: [] })),
         api.get('semesters/').catch(() => ({ data: [] })),
         api.get('departments/').catch(() => ({ data: [] })),
       ]);
-      setAllStudents(st.data);
-      setAllProfessors(pr.data);
+      setAllStudents(st.data.results !== undefined ? st.data.results : (st.data || []));
+      setAllProfessors(pr.data.results !== undefined ? pr.data.results : (pr.data || []));
       setAllCourses(co.data);
       setAllSemesters(sem.data);
       setAllDepartments(dept.data);
@@ -257,6 +279,16 @@ const AdminDashboard = () => {
     setShowPasswordModal(true);
   };
 
+  const handleResetFingerprint = async (item) => {
+    if (!window.confirm(`Reset device fingerprint for ${item.name}?`)) return;
+    try {
+      await api.post(`${EP[activeTab]}${item.id}/reset_fingerprint/`);
+      alert(`Device fingerprint reset successfully for ${item.name}`);
+    } catch (err) {
+      alert(`Error resetting device fingerprint: ${formatError(err)}`);
+    }
+  };
+
   const renderTableActions = (item) => {
     if (activeTab === 'students' || activeTab === 'professors') {
       return (
@@ -275,6 +307,15 @@ const AdminDashboard = () => {
           >
             <KeyRound size={15} />
           </button>
+          {activeTab === 'students' && (
+            <button
+              onClick={() => handleResetFingerprint(item)}
+              className="btn-ghost p-1.5 rounded-lg text-[#D4AF37] hover:text-white hover:bg-[#D4AF37] transition-colors"
+              title="Reset Device Fingerprint"
+            >
+              <Unlock size={15} />
+            </button>
+          )}
         </>
       );
     }
@@ -487,6 +528,32 @@ const AdminDashboard = () => {
           actions={renderTableActions}
           emptyText={`No ${activeTab} found.`}
         />
+
+        {/* Pagination controls — students only */}
+        {activeTab === 'students' && pageCount > 1 && (
+          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Showing page <strong>{page}</strong> of <strong>{pageCount}</strong>
+              &nbsp;·&nbsp; {totalCount} students total
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                disabled={page <= 1 || loading}
+                className="btn-ghost text-xs disabled:opacity-40"
+              >
+                ← Previous
+              </button>
+              <button
+                onClick={() => setPage(p => Math.min(pageCount, p + 1))}
+                disabled={page >= pageCount || loading}
+                className="btn-ghost text-xs disabled:opacity-40"
+              >
+                Next →
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* ── Generic Add Modal ── */}

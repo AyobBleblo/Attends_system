@@ -40,9 +40,6 @@ PYEOF
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. Django management commands
 # ─────────────────────────────────────────────────────────────────────────────
-echo "🔄  Running makemigrations..."
-python manage.py makemigrations --noinput
-
 echo "🔄  Running migrate..."
 python manage.py migrate --noinput
 

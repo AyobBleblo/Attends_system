@@ -50,3 +50,37 @@ class Professor(models.Model):
 
     def __str__(self):
         return f"{self.professor_id} - {self.name}"
+
+
+class UserDevice(models.Model):
+    """
+    Stores a single trusted device fingerprint per user account.
+    Used to prevent QR attendance proxying — once a fingerprint is
+    linked, only scans from that same device are accepted.
+
+    Professors or Admins can delete this record via the reset endpoint
+    to allow a student to re-register from a new device.
+    """
+    user = models.OneToOneField(
+        User,
+        on_delete=models.CASCADE,
+        related_name='device',
+        verbose_name='User',
+    )
+    device_fingerprint = models.CharField(
+        max_length=255,
+        db_index=True,
+        verbose_name='Device Fingerprint',
+        help_text='SHA-256 / FingerprintJS visitor ID of the student\'s trusted device.',
+    )
+    linked_at = models.DateTimeField(
+        auto_now_add=True,
+        verbose_name='Linked At',
+    )
+
+    class Meta:
+        verbose_name = 'User Device'
+        verbose_name_plural = 'User Devices'
+
+    def __str__(self):
+        return f"{self.user.username} — {self.device_fingerprint[:16]}…"

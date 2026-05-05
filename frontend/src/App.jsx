@@ -71,7 +71,7 @@ function AppContent() {
       )}
 
       {/* Main content area */}
-      <main className={`flex-1 min-h-screen overflow-auto ${user ? '' : 'w-full'}`}>
+      <main className={`flex-1 min-h-screen overflow-auto ${user ? 'pt-16 md:pt-0' : 'w-full'}`}>
         <Routes>
           {/* Public */}
           <Route path="/login" element={<LoginPage />} />

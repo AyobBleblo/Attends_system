@@ -142,7 +142,10 @@ class AttendanceScanView(APIView):
 
     def post(self, request):
         student_id = request.data.get('student_id')
-        qr_token = request.data.get('qr_token')
+        qr_token   = request.data.get('qr_token')
+        # device_id is the FingerprintJS visitorId sent by the frontend.
+        # It is optional so old clients / tests still work without it.
+        device_id  = request.data.get('device_id') or None
 
         if not student_id or not qr_token:
             return Response(
@@ -150,12 +153,18 @@ class AttendanceScanView(APIView):
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        result = record_attendance(student_id, qr_token)
+        result = record_attendance(student_id, qr_token, device_id)
+
+        if result.get('device_mismatch'):
+            # Return 403 so the React frontend can show the dedicated
+            # Anti-Gravity "Device Mismatch" modal.
+            return Response(result, status=status.HTTP_403_FORBIDDEN)
 
         if result['success']:
             return Response(result, status=status.HTTP_200_OK)
         else:
             return Response(result, status=status.HTTP_400_BAD_REQUEST)
+
 
 
 class SessionAttendanceListView(APIView):

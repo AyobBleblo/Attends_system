@@ -14,6 +14,8 @@ import {
   Moon,
   LayoutDashboard,
   Bell,
+  Menu,
+  X,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
 import ChangePasswordModal from './ChangePasswordModal';
@@ -27,8 +29,8 @@ function getNavItems(role) {
   }
   if (role === 'professor') {
     return [
-      { to: '/professor', icon: BookOpen,   label: 'My Courses' },
-      { to: '/report',    icon: BarChart2,  label: 'Reports'    },
+      { to: '/professor',     icon: BookOpen,      label: 'My Courses' },
+      { to: '/report',        icon: BarChart2,     label: 'Reports'    },
     ];
   }
   if (role === 'student') {
@@ -39,56 +41,102 @@ function getNavItems(role) {
   return [];
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Individual nav item
-// ─────────────────────────────────────────────────────────────────────────────
-function SidebarNavItem({ item, collapsed }) {
+// ───────────────────────────────────────────────────────────────────────────────
+// Individual nav item  — label always visible when expanded; glass tooltip when collapsed
+// ───────────────────────────────────────────────────────────────────────────────
+function SidebarNavItem({ item, collapsed, onClick }) {
   const Icon = item.icon;
   return (
-    <NavLink
-      to={item.to}
-      end
-      className={({ isActive }) =>
-        `relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200 group
-         ${isActive
-           ? 'bg-[#D4AF37]/10 text-[#B8860B] dark:bg-gold-500/15 dark:text-gold-400'
-           : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-gray-50 dark:hover:bg-white/5'
-         }`
-      }
-    >
-      {({ isActive }) => (
-        <>
-          {/* Gold left-bar for active state */}
-          {isActive && (
-            <motion.div
-              layoutId="activeBar"
-              className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-gold-500"
-              transition={{ type: 'spring', stiffness: 380, damping: 30 }}
-            />
-          )}
-
-          <Icon
-            size={20}
-            className={`shrink-0 transition-colors ${isActive ? 'text-[#B8860B] dark:text-gold-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'}`}
-          />
-
-          <AnimatePresence initial={false}>
-            {!collapsed && (
-              <motion.span
-                key="label"
-                initial={{ opacity: 0, width: 0 }}
-                animate={{ opacity: 1, width: 'auto' }}
-                exit={{ opacity: 0, width: 0 }}
-                transition={{ duration: 0.2 }}
-                className="text-sm font-medium whitespace-nowrap overflow-hidden"
-              >
-                {item.label}
-              </motion.span>
+    // `group` wrapper lets CSS children react to hover on this container
+    <div className="relative group">
+      <NavLink
+        to={item.to}
+        end
+        onClick={onClick}
+        className={({ isActive }) =>
+          `relative flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all duration-200
+           ${isActive
+             ? 'bg-[#D4AF37]/10 text-[#B8860B] dark:bg-gold-500/15 dark:text-gold-400'
+             : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-gray-50 dark:hover:bg-white/5'
+           }`
+        }
+      >
+        {({ isActive }) => (
+          <>
+            {/* Gold left-bar for active state */}
+            {isActive && (
+              <motion.div
+                layoutId="activeBar"
+                className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-gold-500"
+                transition={{ type: 'spring', stiffness: 380, damping: 30 }}
+              />
             )}
-          </AnimatePresence>
-        </>
+
+            <Icon
+              size={20}
+              className={`shrink-0 transition-colors ${
+                isActive
+                  ? 'text-[#B8860B] dark:text-gold-400'
+                  : 'text-slate-400 dark:text-slate-500 group-hover:text-slate-600 dark:group-hover:text-slate-300'
+              }`}
+            />
+
+            {/* Expanded sidebar: animate label in/out */}
+            <AnimatePresence initial={false}>
+              {!collapsed && (
+                <motion.span
+                  key="label"
+                  initial={{ opacity: 0, width: 0 }}
+                  animate={{ opacity: 1, width: 'auto' }}
+                  exit={{ opacity: 0, width: 0 }}
+                  transition={{ duration: 0.2 }}
+                  className="text-sm font-medium whitespace-nowrap overflow-hidden"
+                >
+                  {item.label}
+                </motion.span>
+              )}
+            </AnimatePresence>
+          </>
+        )}
+      </NavLink>
+
+      {/* ✨ Glass Tooltip — only when sidebar is COLLAPSED and user hovers */}
+      {collapsed && (
+        <div
+          className="
+            pointer-events-none
+            absolute left-full top-1/2 -translate-y-1/2 ml-3 z-[100]
+            opacity-0 scale-95 translate-x-1
+            group-hover:opacity-100 group-hover:scale-100 group-hover:translate-x-0
+            transition-all duration-200 ease-out
+          "
+        >
+          {/* Frosted-glass chip */}
+          <div
+            className="
+              flex items-center gap-1.5 px-3 py-1.5 rounded-xl whitespace-nowrap
+              bg-white/90 dark:bg-slate-900/95
+              backdrop-blur-md
+              border border-white/40 dark:border-white/10
+              shadow-[0_8px_32px_rgba(0,0,0,0.14),0_0_0_1px_rgba(212,175,55,0.15)]
+              text-sm font-semibold text-slate-700 dark:text-slate-100
+            "
+          >
+            {/* Gold accent dot */}
+            <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] shrink-0" />
+            {item.label}
+          </div>
+          {/* Triangle arrow pointing left toward the icon */}
+          <div
+            className="
+              absolute right-full top-1/2 -translate-y-1/2 mr-[-1px]
+              border-[5px] border-transparent
+              border-r-white/90 dark:border-r-slate-900/95
+            "
+          />
+        </div>
       )}
-    </NavLink>
+    </div>
   );
 }
 
@@ -99,7 +147,15 @@ function SidebarDrawer({ theme, toggleTheme }) {
   const { user, logout } = useAuth();
   const navigate              = useNavigate();
   const [collapsed,  setCollapsed]  = useState(false);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [isMobile,   setIsMobile]   = useState(window.innerWidth < 768);
   const [pwdOpen,    setPwdOpen]    = useState(false);
+
+  React.useEffect(() => {
+    const handleResize = () => setIsMobile(window.innerWidth < 768);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const navItems = getNavItems(user?.role);
 
@@ -115,17 +171,45 @@ function SidebarDrawer({ theme, toggleTheme }) {
 
   return (
     <>
+      {/* ── Mobile Hamburger ── */}
+      {isMobile && (
+        <button
+          onClick={() => setMobileOpen(true)}
+          className="fixed top-5 left-4 z-40 p-2 rounded-xl bg-white/80 dark:bg-slate-900/80 backdrop-blur-md border border-gray-200 dark:border-white/10 text-slate-800 dark:text-slate-200 shadow-sm"
+        >
+          <Menu size={20} />
+        </button>
+      )}
+
+      {/* ── Mobile Backdrop ── */}
+      <AnimatePresence>
+        {isMobile && mobileOpen && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={() => setMobileOpen(false)}
+            className="fixed inset-0 z-40 bg-slate-900/40 backdrop-blur-sm"
+          />
+        )}
+      </AnimatePresence>
+
       <motion.aside
-        animate={{ width: collapsed ? 68 : 240 }}
+        initial={false}
+        animate={
+          isMobile
+            ? { x: mobileOpen ? 0 : '-100%', width: 260 }
+            : { x: 0, width: collapsed ? 68 : 240 }
+        }
         transition={{ type: 'spring', stiffness: 300, damping: 30 }}
-        className="sidebar-glass shrink-0 h-screen sticky top-0 flex flex-col overflow-hidden z-40"
-        style={{ minWidth: collapsed ? 68 : 240 }}
+        className={`sidebar-glass shrink-0 h-screen flex flex-col overflow-hidden z-50 ${isMobile ? 'fixed top-0 left-0' : 'sticky top-0'}`}
+        style={{ minWidth: isMobile ? 260 : (collapsed ? 68 : 240) }}
       >
         {/* ── Logo row ── */}
         <div className="flex items-center justify-between px-3 py-5 border-b border-white/5">
           <NavLink to={homeLink} className="flex items-center gap-2.5 min-w-0">
-            <div className="shrink-0 w-9 h-9 rounded-xl bg-gold-500/20 border border-gold-500/30 flex items-center justify-center">
-              <GraduationCap size={18} className="text-gold-400" />
+            <div className="shrink-0 w-9 h-9 rounded-xl flex items-center justify-center">
+              <img src="/Alarab_logo.png" alt="Logo" className="w-8 h-8 object-contain drop-shadow-[0_0_8px_rgba(212,175,55,0.25)] dark:brightness-0 dark:invert" />
             </div>
             <AnimatePresence initial={false}>
               {!collapsed && (
@@ -138,7 +222,7 @@ function SidebarDrawer({ theme, toggleTheme }) {
                   className="overflow-hidden"
                 >
                   <span className="text-base font-extrabold text-gold-gradient whitespace-nowrap">
-                    UniAttend
+                    AlArab University
                   </span>
                 </motion.div>
               )}
@@ -183,12 +267,12 @@ function SidebarDrawer({ theme, toggleTheme }) {
         {/* ── Nav links ── */}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-4 space-y-1">
           {navItems.map(item => (
-            <SidebarNavItem key={item.to} item={item} collapsed={collapsed} />
+            <SidebarNavItem key={item.to} item={item} collapsed={!isMobile && collapsed} onClick={() => isMobile && setMobileOpen(false)} />
           ))}
         </nav>
 
         {/* ── Bottom actions ── */}
-        <div className="px-2 py-3 border-t border-white/5 space-y-1">
+        <div className="px-2 py-3 border-t border-white/5 space-y-1 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
 
           {/* Theme toggle */}
           <button

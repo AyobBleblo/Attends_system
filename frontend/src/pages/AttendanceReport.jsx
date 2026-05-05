@@ -1,41 +1,59 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../api/axios';
-import { Download, BookOpen, ClipboardList, ChevronDown, ChevronUp, Search, RefreshCw } from 'lucide-react';
+import { Download, BookOpen, ClipboardList, ChevronDown, ChevronUp, Search, RefreshCw, Smartphone } from 'lucide-react';
 
-// ─── Design tokens (Anti-Gravity dark glassmorphism + gold) ──────────────────
-const T = {
+// ─── Theme context (consumed from App-level provider) ─────────────────────────
+// SidebarDrawer receives `theme` as a prop from App.jsx — we replicate
+// that here by reading it from a simple window attribute set by the toggle.
+// If your project exposes a ThemeContext, swap this for useContext(ThemeContext).
+const useTheme = () => {
+  const [isDark, setIsDark] = useState(
+    () => document.documentElement.classList.contains('dark')
+  );
+  useEffect(() => {
+    const obs = new MutationObserver(() =>
+      setIsDark(document.documentElement.classList.contains('dark'))
+    );
+    obs.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => obs.disconnect();
+  }, []);
+  return isDark;
+};
+
+// ─── Theme-aware design tokens ───────────────────────────────────────────────
+const makeTokens = (isDark) => ({
   gold:       '#D4AF37',
   goldDim:    'rgba(212,175,55,0.18)',
   goldBorder: 'rgba(212,175,55,0.30)',
-  bg:         '#0a0a0f',
-  surface:    'rgba(255,255,255,0.04)',
-  surfaceHov: 'rgba(255,255,255,0.07)',
-  border:     'rgba(255,255,255,0.08)',
-  text:       '#f0f0f0',
-  textMuted:  '#9ca3af',
+  bg:         isDark ? '#0a0a0f'                    : '#f8fafc',
+  surface:    isDark ? 'rgba(255,255,255,0.04)'     : 'rgba(255,255,255,0.85)',
+  surfaceHov: isDark ? 'rgba(255,255,255,0.07)'     : 'rgba(0,0,0,0.03)',
+  border:     isDark ? 'rgba(255,255,255,0.08)'     : 'rgba(0,0,0,0.08)',
+  text:       isDark ? '#f0f0f0'                    : '#1e293b',
+  textMuted:  isDark ? '#9ca3af'                    : '#64748b',
   present:    '#22c55e',
   absent:     '#ef4444',
   presentBg:  'rgba(34,197,94,0.15)',
   absentBg:   'rgba(239,68,68,0.15)',
-};
+});
 
-const glass = {
-  background:     T.surface,
-  backdropFilter: 'blur(14px)',
+const makeGlass = (T) => ({
+  background:           T.surface,
+  backdropFilter:       'blur(14px)',
   WebkitBackdropFilter: 'blur(14px)',
-  border:         `1px solid ${T.border}`,
-  borderRadius:   '16px',
-};
+  border:               `1px solid ${T.border}`,
+  borderRadius:         '16px',
+});
 
-const goldGlass = {
+const makeGoldGlass = (T, glass) => ({
   ...glass,
-  border: `1px solid ${T.goldBorder}`,
+  border:     `1px solid ${T.goldBorder}`,
   background: T.goldDim,
-};
+});
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
-const pctColor = (pct) => {
+const pctColor = (pct, T) => {
   if (pct >= 75) return T.present;
   if (pct >= 50) return T.gold;
   return T.absent;
@@ -46,7 +64,7 @@ const fmtTime = (iso) => new Date(iso).toLocaleTimeString('en-GB', { hour: '2-di
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
-function StatCard({ label, value, color, icon: Icon }) {
+function StatCard({ label, value, color, icon: Icon, T, glass }) {
   return (
     <div style={{
       ...glass,
@@ -75,8 +93,8 @@ function StatCard({ label, value, color, icon: Icon }) {
   );
 }
 
-function PctRing({ pct }) {
-  const color = pctColor(pct);
+function PctRing({ pct, T }) {
+  const color = pctColor(pct, T);
   const r = 20, sw = 4;
   const circ = 2 * Math.PI * r;
   const offset = circ - (pct / 100) * circ;
@@ -97,7 +115,7 @@ function PctRing({ pct }) {
   );
 }
 
-function LectureGrid({ lectures, totalQuota }) {
+function LectureGrid({ lectures, totalQuota, T }) {
   // Render up to `totalQuota` cells; extra cells beyond held sessions = not yet scheduled
   const cells = Array.from({ length: totalQuota }, (_, i) => lectures[i] || null);
   return (
@@ -142,10 +160,10 @@ function LectureGrid({ lectures, totalQuota }) {
   );
 }
 
-function StudentRow({ student, totalQuota }) {
+function StudentRow({ student, totalQuota, T, glass, onResetDevice }) {
   const [open, setOpen] = useState(false);
   const pct = student.attendance_pct;
-  const pctCol = pctColor(pct);
+  const pctCol = pctColor(pct, T);
 
   return (
     <div style={{ ...glass, marginBottom: '0.75rem', overflow: 'hidden' }}>
@@ -158,7 +176,7 @@ function StudentRow({ student, totalQuota }) {
           color: T.text, textAlign: 'left',
         }}
       >
-        <PctRing pct={pct} />
+        <PctRing pct={pct} T={T} />
 
         <div style={{ flex: 1, minWidth: 0 }}>
           <p style={{ margin: 0, fontWeight: 600, fontSize: '0.95rem', color: T.text, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
@@ -186,6 +204,20 @@ function StudentRow({ student, totalQuota }) {
           <div style={{ color: T.textMuted }}>
             {open ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
           </div>
+          {onResetDevice && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onResetDevice(student); }}
+              title="Reset device fingerprint for this student"
+              style={{
+                padding: '0.3rem 0.6rem', borderRadius: 8, fontSize: '0.7rem',
+                background: 'rgba(212,175,55,0.12)', border: '1px solid rgba(212,175,55,0.3)',
+                color: '#D4AF37', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4,
+                whiteSpace: 'nowrap', flexShrink: 0,
+              }}
+            >
+              <Smartphone size={12} /> Reset Device
+            </button>
+          )}
         </div>
       </button>
 
@@ -199,7 +231,7 @@ function StudentRow({ student, totalQuota }) {
           <p style={{ margin: '0.75rem 0 0.25rem', fontSize: '0.75rem', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
             Lecture attendance grid ({student.lectures_held} held / {totalQuota} total quota)
           </p>
-          <LectureGrid lectures={student.lectures} totalQuota={totalQuota} />
+          <LectureGrid lectures={student.lectures} totalQuota={totalQuota} T={T} />
 
           {/* Detailed table */}
           <div style={{ marginTop: '1.25rem', overflowX: 'auto' }}>
@@ -246,13 +278,25 @@ function StudentRow({ student, totalQuota }) {
 // ─────────────────────────────────────────────────────────────────────────────
 // Tab 1: Comprehensive Course Report
 // ─────────────────────────────────────────────────────────────────────────────
-function CourseReport() {
+function CourseReport({ T, glass, goldGlass }) {
   const [courses, setCourses] = useState([]);
   const [courseId, setCourseId] = useState('');
   const [report, setReport] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [search, setSearch] = useState('');
+  const [resetMsg, setResetMsg] = useState('');
+
+  const handleResetDevice = async (student) => {
+    if (!window.confirm(`Reset device fingerprint for ${student.student_name}?\nThey will be able to scan from a new device.`)) return;
+    try {
+      const res = await api.post(`/reset-fingerprint/${student.student_id}/`);
+      setResetMsg(res.data.message || 'Device reset successfully.');
+    } catch (e) {
+      setResetMsg(e.response?.data?.error || 'Failed to reset device.');
+    }
+    setTimeout(() => setResetMsg(''), 4000);
+  };
 
   useEffect(() => {
     api.get('/courses/').then(r => setCourses(r.data)).catch(console.error);
@@ -273,8 +317,8 @@ function CourseReport() {
 
   const filtered = report?.students?.filter(s =>
     !search ||
-    s.student_name.toLowerCase().includes(search.toLowerCase()) ||
-    s.student_id.toLowerCase().includes(search.toLowerCase())
+    s?.student_name?.toLowerCase().includes(search.toLowerCase()) ||
+    s?.student_id?.toLowerCase().includes(search.toLowerCase())
   ) ?? [];
 
   const exportCSV = () => {
@@ -298,6 +342,17 @@ function CourseReport() {
 
   return (
     <div>
+      {/* Reset Device toast */}
+      {resetMsg && (
+        <div style={{
+          marginBottom: '1rem', padding: '0.75rem 1.25rem', borderRadius: 10,
+          background: 'rgba(212,175,55,0.12)', border: '1px solid rgba(212,175,55,0.3)',
+          color: '#D4AF37', fontSize: '0.85rem', fontWeight: 600,
+          display: 'flex', alignItems: 'center', gap: 8,
+        }}>
+          <Smartphone size={14} /> {resetMsg}
+        </div>
+      )}
       {/* Controls */}
       <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div style={{ flex: '1 1 220px', minWidth: 180 }}>
@@ -406,9 +461,9 @@ function CourseReport() {
 
           {/* Summary stats */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
-            <StatCard label="Students" value={report.students.length} icon={BookOpen} />
-            <StatCard label="Sessions Held" value={report.lectures_held} color={T.gold} />
-            <StatCard label="Lecture Quota" value={report.total_lectures} color={T.textMuted} />
+            <StatCard label="Students" value={report?.students?.length || 0} icon={BookOpen} T={T} glass={glass} />
+            <StatCard label="Sessions Held" value={report.lectures_held} color={T.gold} T={T} glass={glass} />
+            <StatCard label="Lecture Quota" value={report.total_lectures} color={T.textMuted} T={T} glass={glass} />
           </div>
 
           {/* Student rows */}
@@ -419,10 +474,14 @@ function CourseReport() {
           ) : (
             <div>
               <p style={{ fontSize: '0.75rem', color: T.textMuted, marginBottom: '0.75rem' }}>
-                Showing {filtered.length} of {report.students.length} students — click a row to expand lecture details ↓
+                Showing {filtered.length} of {report?.students?.length || 0} students — click a row to expand lecture details ↓
               </p>
               {filtered.map(s => (
-                <StudentRow key={s.student_id} student={s} totalQuota={report.total_lectures} />
+                <StudentRow
+                  key={s.student_id} student={s} totalQuota={report.total_lectures}
+                  T={T} glass={glass}
+                  onResetDevice={handleResetDevice}
+                />
               ))}
             </div>
           )}
@@ -435,7 +494,7 @@ function CourseReport() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Tab 2: Session Report (fine-grained filter)
 // ─────────────────────────────────────────────────────────────────────────────
-function SessionReport() {
+function SessionReport({ T, glass }) {
   const [courses, setCourses]   = useState([]);
   const [filters, setFilters]   = useState({ course_id: '', teacher_id: '', student_id: '', session_id: '' });
   const [results, setResults]   = useState([]);
@@ -580,13 +639,17 @@ const TABS = [
 
 export default function AttendanceReport() {
   const [tab, setTab] = useState('course');
+  const isDark = useTheme();
+  const T       = makeTokens(isDark);
+  const glass     = makeGlass(T);
+  const goldGlass = makeGoldGlass(T, glass);
 
   return (
-    <div style={{ minHeight: '100vh', background: T.bg, padding: '1.5rem', fontFamily: 'Inter, sans-serif', color: T.text }}>
+    <div style={{ minHeight: '100vh', background: T.bg, padding: '1.5rem', fontFamily: 'Inter, sans-serif', color: T.text, transition: 'background 0.3s, color 0.3s' }}>
       <style>{`
         @keyframes spin { to { transform: rotate(360deg); } }
         @keyframes fadeSlide { from { opacity:0; transform:translateY(-8px); } to { opacity:1; transform:translateY(0); } }
-        select option { background: #1a1a2e; color: #f0f0f0; }
+        select option { background: ${isDark ? '#1a1a2e' : '#ffffff'}; color: ${isDark ? '#f0f0f0' : '#1e293b'}; }
         * { box-sizing: border-box; }
         ::-webkit-scrollbar { width: 6px; height: 6px; }
         ::-webkit-scrollbar-track { background: transparent; }
@@ -667,8 +730,8 @@ export default function AttendanceReport() {
 
       {/* Tab content */}
       <div>
-        {tab === 'course'  && <CourseReport />}
-        {tab === 'session' && <SessionReport />}
+        {tab === 'course'  && <CourseReport  T={T} glass={glass} goldGlass={goldGlass} />}
+        {tab === 'session' && <SessionReport T={T} glass={glass} />}
       </div>
     </div>
   );

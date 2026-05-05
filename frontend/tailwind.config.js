@@ -76,6 +76,14 @@ export default {
         'brand-lg': '0 8px 40px rgba(108, 58, 183, 0.35)',
         'gold': '0 4px 20px rgba(240, 165, 0, 0.3)',
       },
+      spacing: {
+        // Safe-area inset for iOS/Android software navigation bars.
+        // Usage: pb-safe, pt-safe, or calc variants like pb-[calc(80px+env(safe-area-inset-bottom))]
+        'safe': 'env(safe-area-inset-bottom)',
+        'safe-top': 'env(safe-area-inset-top)',
+        'safe-left': 'env(safe-area-inset-left)',
+        'safe-right': 'env(safe-area-inset-right)',
+      },
     },
   },
   plugins: [],

@@ -1,14 +1,144 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { motion, AnimatePresence } from 'framer-motion';
+import FingerprintJS from '@fingerprintjs/fingerprintjs';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
 import {
   BookOpen, Loader2, RefreshCw, KeyRound, X,
-  CheckCircle, XCircle,
+  CheckCircle, XCircle, ShieldAlert, Smartphone,
 } from 'lucide-react';
 import EnrolledCourseCard from '../components/student/EnrolledCourseCard';
 import QrScannerModal   from '../components/common/QrScannerModal';
 import SkeletonCard      from '../components/common/SkeletonCard';
+
+// ── Gold accent design tokens (Anti-Gravity) ──────────────────────────────────
+const G = {
+  gold:       '#D4AF37',
+  goldDim:    'rgba(212,175,55,0.15)',
+  goldBorder: 'rgba(212,175,55,0.35)',
+  bg:         '#0a0a0f',
+  surface:    'rgba(255,255,255,0.04)',
+  border:     'rgba(255,255,255,0.09)',
+  text:       '#f0f0f0',
+  muted:      '#9ca3af',
+};
+
+// ── Anti-Gravity Device-Mismatch Modal ────────────────────────────────────────
+/**
+ * Shown when the backend returns HTTP 403 with { device_mismatch: true }.
+ * Glassmorphism panel on a full-screen black overlay.
+ */
+const DeviceMismatchModal = ({ onClose }) => (
+  <div
+    style={{
+      position: 'fixed', inset: 0, zIndex: 60,
+      background: 'rgba(0,0,0,0.92)',
+      backdropFilter: 'blur(12px)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '1rem',
+    }}
+  >
+    <motion.div
+      initial={{ opacity: 0, scale: 0.88, y: 24 }}
+      animate={{ opacity: 1, scale: 1, y: 0 }}
+      exit={{ opacity: 0, scale: 0.88, y: 24 }}
+      transition={{ type: 'spring', stiffness: 340, damping: 26 }}
+      style={{
+        background: 'rgba(10,10,15,0.92)',
+        border: `1px solid ${G.goldBorder}`,
+        borderRadius: 20,
+        boxShadow: `0 0 60px rgba(212,175,55,0.18), 0 0 0 1px ${G.goldBorder}`,
+        backdropFilter: 'blur(24px)',
+        padding: '2.5rem 2rem',
+        maxWidth: 420,
+        width: '100%',
+        textAlign: 'center',
+        position: 'relative',
+      }}
+    >
+      {/* Close */}
+      <button
+        onClick={onClose}
+        style={{
+          position: 'absolute', top: 14, right: 14,
+          background: 'rgba(255,255,255,0.06)', border: `1px solid ${G.border}`,
+          borderRadius: 8, padding: '0.25rem 0.4rem', cursor: 'pointer', color: G.muted,
+        }}
+        aria-label="Close"
+      >
+        <X size={16} />
+      </button>
+
+      {/* Icon */}
+      <div style={{
+        width: 72, height: 72, borderRadius: '50%',
+        background: G.goldDim, border: `1px solid ${G.goldBorder}`,
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        margin: '0 auto 1.25rem',
+      }}>
+        <ShieldAlert size={34} color={G.gold} />
+      </div>
+
+      {/* Heading */}
+      <h2 style={{
+        margin: '0 0 0.5rem',
+        fontSize: '1.35rem', fontWeight: 800,
+        color: G.gold,
+        fontFamily: 'Inter, sans-serif',
+      }}>
+        Device Not Recognised
+      </h2>
+      <p style={{ margin: '0 0 0.35rem', fontSize: '0.82rem', color: G.muted, fontFamily: 'Inter, sans-serif' }}>
+        جهازك غير مسجّل لهذا الحساب
+      </p>
+
+      {/* Body */}
+      <p style={{
+        margin: '1rem 0 1.5rem',
+        fontSize: '0.9rem', lineHeight: 1.65,
+        color: G.text, fontFamily: 'Inter, sans-serif',
+      }}>
+        Your attendance was <strong style={{ color: '#ef4444' }}>refused</strong> because
+        this QR scan was submitted from an <strong style={{ color: G.gold }}>unrecognised device</strong>.
+      </p>
+
+      {/* What to do */}
+      <div style={{
+        background: G.goldDim, border: `1px solid ${G.goldBorder}`,
+        borderRadius: 12, padding: '1rem 1.2rem',
+        textAlign: 'left', marginBottom: '1.5rem',
+      }}>
+        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', marginBottom: '0.6rem' }}>
+          <Smartphone size={16} color={G.gold} style={{ marginTop: 2, flexShrink: 0 }} />
+          <p style={{ margin: 0, fontSize: '0.82rem', color: G.text, fontFamily: 'Inter, sans-serif', lineHeight: 1.55 }}>
+            <strong style={{ color: G.gold }}>What to do:</strong> Contact your professor or the admin
+            and ask them to <em>Reset your Device Fingerprint</em>. Once reset, you can scan
+            from this new device.
+          </p>
+        </div>
+        <p style={{ margin: 0, fontSize: '0.78rem', color: G.muted, paddingLeft: '1.6rem', fontFamily: 'Inter, sans-serif' }}>
+          اتصل بأستاذك أو المشرف لإعادة تعيين بصمة جهازك.
+        </p>
+      </div>
+
+      <button
+        onClick={onClose}
+        style={{
+          width: '100%', padding: '0.75rem',
+          background: G.goldDim, border: `1px solid ${G.goldBorder}`,
+          borderRadius: 12, color: G.gold, fontWeight: 700,
+          fontSize: '0.9rem', cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+          transition: 'background 0.2s',
+        }}
+        onMouseEnter={e => e.currentTarget.style.background = 'rgba(212,175,55,0.25)'}
+        onMouseLeave={e => e.currentTarget.style.background = G.goldDim}
+      >
+        Understood
+      </button>
+    </motion.div>
+  </div>
+);
 
 // ── Full-screen scan result overlay (success / fail) ──────────────────────────
 const ScanResult = ({ result, onClose }) => {
@@ -35,7 +165,7 @@ const ScanResult = ({ result, onClose }) => {
 };
 
 // ── Manual token entry modal (fallback when camera is unavailable) ─────────────
-const ManualModal = ({ course, studentId, onClose, onResult }) => {
+const ManualModal = ({ course, studentId, deviceId, onClose, onResult }) => {
   const [token,   setToken]   = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -44,13 +174,16 @@ const ManualModal = ({ course, studentId, onClose, onResult }) => {
     if (!token.trim()) return;
     setLoading(true);
     try {
-      const res = await api.post('/attendance/scan/', {
-        student_id: studentId,
-        qr_token: token.trim(),
-      });
+      const payload = { student_id: studentId, qr_token: token.trim() };
+      if (deviceId) payload.device_id = deviceId;
+      const res = await api.post('/attendance/scan/', payload);
       onResult({ type: 'success', message: res.data.message || 'Attendance recorded!' });
     } catch (err) {
-      onResult({ type: 'error', message: err.response?.data?.error || 'Failed to record attendance.' });
+      if (err.response?.status === 403 && err.response?.data?.device_mismatch) {
+        onResult({ type: 'device_mismatch' });
+      } else {
+        onResult({ type: 'error', message: err.response?.data?.error || 'Failed to record attendance.' });
+      }
     } finally {
       setLoading(false);
       onClose();
@@ -101,10 +234,21 @@ function StudentScan() {
   const [semesterName, setSemesterName] = useState('');
 
   const [selectedCourse, setSelectedCourse] = useState(null);
-  const [showScanner,    setShowScanner]    = useState(false);  // ← QrScannerModal
-  const [showManual,     setShowManual]     = useState(false);  // ← manual fallback
+  const [showScanner,    setShowScanner]    = useState(false);
+  const [showManual,     setShowManual]     = useState(false);
   const [scanResult,     setScanResult]     = useState(null);   // { type, message }
   const [submitting,     setSubmitting]     = useState(false);
+  const [showMismatch,   setShowMismatch]   = useState(false);  // Anti-Gravity 403 modal
+
+  // ── Fingerprint initialisation ─────────────────────────────────────────────
+  const deviceIdRef = useRef(null);
+
+  useEffect(() => {
+    FingerprintJS.load()
+      .then(fp => fp.get())
+      .then(result => { deviceIdRef.current = result.visitorId; })
+      .catch(err => console.warn('FingerprintJS failed to load:', err));
+  }, []);
 
   // ── Guard ──────────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -133,50 +277,65 @@ function StudentScan() {
   };
 
   // ── Called by QrScannerModal the instant a QR code is decoded ─────────────
-  //    No submit button, no manual input — 100% automatic.
   const handleScanned = useCallback(async (decodedToken) => {
     setShowScanner(false);
     setSubmitting(true);
     setScanResult(null);
     try {
-      const res = await api.post('/attendance/scan/', {
+      const payload = {
         student_id: user.student_id,
-        qr_token:  decodedToken,
-      });
+        qr_token:   decodedToken,
+      };
+      // Attach device fingerprint if available
+      if (deviceIdRef.current) payload.device_id = deviceIdRef.current;
+
+      const res = await api.post('/attendance/scan/', payload);
       setScanResult({ type: 'success', message: res.data.message || 'Attendance recorded!' });
-      fetchCourses();   // refresh attendance % on the cards
+      fetchCourses();
     } catch (err) {
-      setScanResult({
-        type:    'error',
-        message: err.response?.data?.error || 'Failed to record attendance.',
-      });
+      if (err.response?.status === 403 && err.response?.data?.device_mismatch) {
+        // Show the dedicated Anti-Gravity device-mismatch modal
+        setShowMismatch(true);
+      } else {
+        setScanResult({
+          type:    'error',
+          message: err.response?.data?.error || 'Failed to record attendance.',
+        });
+      }
     } finally {
       setSubmitting(false);
     }
   }, [user]);
 
-  // ── Decide whether to open scanner or manual entry ─────────────────────────
   const handleScanCard = (course) => {
     setSelectedCourse(course);
-    // html5-qrcode works on all modern browsers, so try scanner first.
-    // If the camera is truly unavailable, QrScannerModal shows an error
-    // and user can close it then tap the "manual" path.
     setShowScanner(true);
   };
 
-  // ── Scanner: plain cancel (user pressed Cancel) ────────────────────────────
-  const handleScannerClose = () => setShowScanner(false);
+  const handleScannerClose    = () => setShowScanner(false);
+  const handleManualFallback  = () => { setShowScanner(false); setShowManual(true); };
 
-  // ── Scanner: user chose "Enter token manually" ────────────────────────────
-  const handleManualFallback = () => {
-    setShowScanner(false);
-    setShowManual(true);
+  // Manual modal result handler
+  const handleManualResult = (r) => {
+    if (r.type === 'device_mismatch') {
+      setShowMismatch(true);
+    } else {
+      setScanResult(r);
+      fetchCourses();
+    }
   };
 
   if (!user) return null;
 
   return (
-    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 pb-[calc(2rem+env(safe-area-inset-bottom))]">
+
+      {/* ── Anti-Gravity Device Mismatch Modal ────────────────────────────── */}
+      <AnimatePresence>
+        {showMismatch && (
+          <DeviceMismatchModal onClose={() => setShowMismatch(false)} />
+        )}
+      </AnimatePresence>
 
       {/* ── Scan result overlay ───────────────────────────────────────────── */}
       {scanResult && (
@@ -186,7 +345,7 @@ function StudentScan() {
         />
       )}
 
-      {/* ── Native QR scanner (html5-qrcode) ─────────────────────────────── */}
+      {/* ── Native QR scanner ─────────────────────────────────────────────── */}
       {showScanner && selectedCourse && (
         <QrScannerModal
           course={selectedCourse}
@@ -196,13 +355,14 @@ function StudentScan() {
         />
       )}
 
-      {/* ── Manual token entry (fallback / accessibility) ─────────────────── */}
+      {/* ── Manual token entry ─────────────────────────────────────────────── */}
       {showManual && selectedCourse && (
         <ManualModal
           course={selectedCourse}
           studentId={user.student_id}
+          deviceId={deviceIdRef.current}
           onClose={() => { setShowManual(false); setSelectedCourse(null); }}
-          onResult={(r) => { setScanResult(r); fetchCourses(); }}
+          onResult={handleManualResult}
         />
       )}
 
@@ -255,13 +415,10 @@ function StudentScan() {
         </div>
       ) : (
         <>
-          {/* Summary bar */}
           <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
             <span className="font-semibold">{courses.length}</span> courses enrolled.
             Tap <span className="font-semibold text-brand-500">Scan Attendance</span> on any card when your professor opens a session.
           </div>
-
-
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {courses.map(course => (
               <EnrolledCourseCard

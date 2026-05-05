@@ -4,7 +4,9 @@ from rest_framework.response import Response
 from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAuthenticated, IsAdminUser
 from rest_framework.decorators import action
-from .models import Student, Professor
+from rest_framework.pagination import PageNumberPagination
+from django.contrib.auth.models import User
+from .models import Student, Professor, UserDevice
 from .serializers import StudentSerializer, ProfessorSerializer, AdminStudentSerializer, AdminProfessorSerializer
 from courses.models import Course, CourseAssignment
 from courses.serializers import CourseSerializer
@@ -12,10 +14,33 @@ from attendance.models import Enrollment
 from core.models import Semester
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Pagination
+# ─────────────────────────────────────────────────────────────────────────────
+class StudentPagination(PageNumberPagination):
+    """
+    Returns 25 students per page by default.
+    Clients can override with ?page_size=50 (capped at 100).
+    """
+    page_size = 25
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Admin ViewSets
+# ─────────────────────────────────────────────────────────────────────────────
 class AdminStudentViewSet(viewsets.ModelViewSet):
-    queryset = Student.objects.all()
+    """
+    CRUD for students — paginated (25/page) and select_related optimised
+    to prevent N+1 queries on department & user joins.
+    """
+    # select_related: join department + user in ONE SQL query instead of
+    # issuing separate queries for each row.
+    queryset = Student.objects.select_related('department', 'user').all()
     serializer_class = AdminStudentSerializer
     permission_classes = [IsAdminUser]
+    pagination_class = StudentPagination
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'student_id', 'user__username', 'user__email']
 
@@ -40,9 +65,28 @@ class AdminStudentViewSet(viewsets.ModelViewSet):
             return Response({'status': 'Custom password set successfully'})
         return Response({'error': 'No user account associated with this student'}, status=status.HTTP_400_BAD_REQUEST)
 
+    @action(detail=True, methods=['post'], url_path='reset_fingerprint')
+    def reset_fingerprint(self, request, pk=None):
+        """
+        Deletes the stored device fingerprint for this student's user account,
+        allowing them to re-register from a new device on their next scan.
+        Accessible by Admins only (IsAdminUser guards the whole viewset).
+        """
+        student = self.get_object()
+        if not student.user:
+            return Response(
+                {'error': 'No user account associated with this student.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        deleted_count, _ = UserDevice.objects.filter(user=student.user).delete()
+        if deleted_count:
+            return Response({'status': f'Device fingerprint reset for {student.name}. '
+                                       f'They can now register from a new device.'})
+        return Response({'status': f'No device fingerprint was linked to {student.name}.'})
+
 
 class AdminProfessorViewSet(viewsets.ModelViewSet):
-    queryset = Professor.objects.all()
+    queryset = Professor.objects.select_related('department', 'user').all()
     serializer_class = AdminProfessorSerializer
     permission_classes = [IsAdminUser]
     filter_backends = [filters.SearchFilter]
@@ -70,6 +114,54 @@ class AdminProfessorViewSet(viewsets.ModelViewSet):
         return Response({'error': 'No user account associated with this professor'}, status=status.HTTP_400_BAD_REQUEST)
 
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Professor-accessible fingerprint reset (for a student by student_id string)
+# POST /api/reset-fingerprint/<student_id>/
+# ─────────────────────────────────────────────────────────────────────────────
+class ResetFingerprintView(APIView):
+    """
+    Allows a Professor or Admin to clear a student's device fingerprint.
+    Uses the string student_id (e.g. "STU-001"), NOT the database PK.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, student_id):
+        # Only Professors or Admins may call this endpoint
+        user = request.user
+        is_professor = hasattr(user, 'professor_profile')
+        if not (user.is_staff or user.is_superuser or is_professor):
+            return Response(
+                {'error': 'Only professors or admins can reset device fingerprints.'},
+                status=status.HTTP_403_FORBIDDEN,
+            )
+
+        try:
+            student = Student.objects.select_related('user').get(student_id=student_id)
+        except Student.DoesNotExist:
+            return Response({'error': f'Student "{student_id}" not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        if not student.user:
+            return Response(
+                {'error': 'This student has no linked user account.'},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        deleted_count, _ = UserDevice.objects.filter(user=student.user).delete()
+        if deleted_count:
+            return Response({
+                'status': 'reset',
+                'message': f'Device fingerprint cleared for {student.name}. '
+                           f'They can now attend from a new device.',
+            })
+        return Response({
+            'status': 'no_device',
+            'message': f'No fingerprint was linked to {student.name}.',
+        })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Public list views
+# ─────────────────────────────────────────────────────────────────────────────
 class StudentListView(APIView):
     permission_classes = [AllowAny]
 
