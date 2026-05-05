@@ -2,6 +2,8 @@ services:
   db:
     image: postgres:15-alpine
     restart: always
+    ports:
+      - "5432:5432"
     environment:
       POSTGRES_DB: ${DB_NAME:-attendance_db}
       POSTGRES_USER: ${DB_USER:-postgres}
@@ -128,8 +130,8 @@ services:
     build: ./frontend
     restart: always
     ports:
-      - "80:80"      # HTTP  → nginx redirects to HTTPS automatically
-      - "443:443"    # HTTPS → camera / getUserMedia works on any device
+      - "80:80" # HTTP  → nginx redirects to HTTPS automatically
+      - "443:443" # HTTPS → camera / getUserMedia works on any device
     depends_on:
       - backend
     volumes:
