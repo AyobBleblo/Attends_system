@@ -4,6 +4,9 @@ from .views import (
     SessionCreateView,
     SessionQRView,
     SessionRefreshQRView,
+    SessionEndScanView,
+    SessionManualEndView,
+    CourseSessionStatusView,
     AttendanceScanView,
     SessionAttendanceListView,
     AttendanceReportView,
@@ -25,6 +28,13 @@ urlpatterns = [
     path('sessions/<int:session_id>/qr/', SessionQRView.as_view(), name='session-qr'),
     path('sessions/<int:session_id>/refresh-qr/', SessionRefreshQRView.as_view(), name='session-refresh-qr'),
 
+    # Session duration tracking
+    path('sessions/<int:session_id>/end-scan/', SessionEndScanView.as_view(), name='session-end-scan'),
+    path('sessions/<int:session_id>/manual-end/', SessionManualEndView.as_view(), name='session-manual-end'),
+
+    # Flutter: check if a session is currently live for a course (today, no end_time)
+    path('sessions/course/<int:course_id>/active/', CourseSessionStatusView.as_view(), name='course-session-active'),
+
     # QR Scanning
     path('attendance/scan/', AttendanceScanView.as_view(), name='attendance-scan'),
     path('attendance/session/<int:session_id>/', SessionAttendanceListView.as_view(), name='session-attendance-list'),
@@ -44,3 +54,4 @@ urlpatterns = [
 
     path('', include(router.urls)),
 ]
+

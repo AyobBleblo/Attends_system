@@ -324,9 +324,13 @@ function CourseReport({ T, glass, goldGlass }) {
   const exportCSV = () => {
     if (!report || !filtered.length) return;
     const quota = report.total_lectures;
-    const header = ['Student ID', 'Student Name', 'Major',
-      ...Array.from({ length: quota }, (_, i) => `L${i + 1}`),
-      'Present', 'Absent', 'Pct%'];
+    // Use actual lecture dates as headers instead of static L1, L2, L3
+    const lectureDateHeaders = Array.from({ length: quota }, (_, i) => {
+      const lec = filtered[0]?.lectures?.[i];
+      if (lec?.date) return new Date(lec.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      return `L${i + 1}`;
+    });
+    const header = ['Student ID', 'Student Name', 'Major', ...lectureDateHeaders, 'Present', 'Absent', 'Pct%'];
     const rows = filtered.map(s => [
       s.student_id, s.student_name, s.student_major,
       ...Array.from({ length: quota }, (_, i) => s.lectures[i]?.status || '—'),
@@ -464,6 +468,19 @@ function CourseReport({ T, glass, goldGlass }) {
             <StatCard label="Students" value={report?.students?.length || 0} icon={BookOpen} T={T} glass={glass} />
             <StatCard label="Sessions Held" value={report.lectures_held} color={T.gold} T={T} glass={glass} />
             <StatCard label="Lecture Quota" value={report.total_lectures} color={T.textMuted} T={T} glass={glass} />
+            {report.total_instructor_hours != null && (
+              <StatCard
+                label="Instructor Hours"
+                value={(() => {
+                  const h = Math.floor(report.total_instructor_hours);
+                  const m = Math.round((report.total_instructor_hours - h) * 60);
+                  return h > 0 ? `${h}h ${m}m` : `${m}m`;
+                })()}
+                color={T.gold}
+                T={T}
+                glass={glass}
+              />
+            )}
           </div>
 
           {/* Student rows */}

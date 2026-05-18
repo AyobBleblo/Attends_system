@@ -19,8 +19,12 @@ class SessionSerializer(serializers.ModelSerializer):
 
     class Meta:
         model = Session
-        fields = ['id', 'course', 'course_code', 'professor', 'professor_name',
-                  'semester', 'date_time', 'qr_token', 'qr_expires_at']
+        fields = [
+            'id', 'course', 'course_code', 'professor', 'professor_name',
+            'semester', 'date_time', 'qr_token', 'qr_expires_at',
+            # Duration-tracking fields
+            'end_time', 'duration_minutes', 'teacher_note',
+        ]
 
 
 class AttendanceSerializer(serializers.ModelSerializer):

@@ -8,6 +8,7 @@ from datetime import timedelta
 from django.utils.timezone import now
 from django.db.models.functions import TruncDate
 from django.http import HttpResponse
+from django.utils.dateparse import parse_datetime
 from rest_framework.views import APIView
 from rest_framework import viewsets
 from rest_framework.response import Response
@@ -134,6 +135,123 @@ class SessionRefreshQRView(APIView):
             return Response({'qr_token': session.qr_token})
         except Session.DoesNotExist:
             return Response({'error': 'Session not found'}, status=status.HTTP_404_NOT_FOUND)
+
+
+class SessionEndScanView(APIView):
+    """
+    POST /sessions/<id>/end-scan/
+    Called when a student scans the "End Session" QR.
+    Purpose is TIMING ONLY — no attendance is created or modified.
+    Each scan overwrites end_time so the last scanner's time is the final duration.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, session_id):
+        try:
+            session = Session.objects.get(pk=session_id)
+        except Session.DoesNotExist:
+            return Response({'error': 'Session not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        qr_token = request.data.get('qr_token')
+        if qr_token and qr_token != session.qr_token:
+            return Response({'error': 'Invalid QR token for this session.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        session.record_end()  # overwrites end_time, recalculates duration_minutes
+        return Response({
+            'success': True,
+            'session_id': session.id,
+            'end_time': session.end_time.isoformat(),
+            'duration_minutes': session.duration_minutes,
+        })
+
+
+class SessionManualEndView(APIView):
+    """
+    PATCH /sessions/<id>/manual-end/
+    Allows the professor (or admin) to manually set end_time with a mandatory note.
+    Professors may only edit their own sessions; admins can edit any.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, session_id):
+        try:
+            session = Session.objects.select_related('professor').get(pk=session_id)
+        except Session.DoesNotExist:
+            return Response({'error': 'Session not found.'}, status=status.HTTP_404_NOT_FOUND)
+
+        user = request.user
+
+        # Authorization: professor may only edit their own sessions
+        if not user.is_staff and not user.is_superuser:
+            try:
+                professor = user.professor_profile
+                if session.professor_id != professor.id:
+                    return Response({'error': 'You can only edit your own sessions.'}, status=status.HTTP_403_FORBIDDEN)
+            except Professor.DoesNotExist:
+                return Response({'error': 'Not authorized.'}, status=status.HTTP_403_FORBIDDEN)
+
+        end_time_raw = request.data.get('end_time')
+        teacher_note = (request.data.get('teacher_note') or '').strip()
+
+        if not end_time_raw:
+            return Response({'error': 'end_time is required.'}, status=status.HTTP_400_BAD_REQUEST)
+        if not teacher_note:
+            return Response(
+                {'error': 'teacher_note is required when manually setting end time.'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        end_time = parse_datetime(end_time_raw)
+        if not end_time:
+            return Response({'error': 'Invalid end_time format. Use ISO 8601.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        if end_time <= session.date_time:
+            return Response({'error': 'end_time must be after session start time.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        session.teacher_note = teacher_note
+        session.record_end(timestamp=end_time)
+        return Response(SessionSerializer(session).data)
+
+
+class CourseSessionStatusView(APIView):
+    """
+    GET /sessions/course/<course_id>/active/
+    Returns whether there is a live (no end_time) session for this course
+    in the active semester.  Used by the Flutter student app to auto-detect
+    whether to show the scan button.
+    """
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, course_id):
+        try:
+            semester = Semester.objects.get(is_active=True)
+        except Semester.DoesNotExist:
+            return Response({'is_active': False, 'error': 'No active semester.'}, status=status.HTTP_200_OK)
+
+        # A session is considered "active" if it belongs to today and has no end_time
+        from django.utils.timezone import localdate
+        today = localdate()
+        session = (
+            Session.objects
+            .filter(
+                course_id=course_id,
+                semester=semester,
+                date_time__date=today,
+                end_time__isnull=True,
+            )
+            .order_by('-date_time')
+            .first()
+        )
+
+        if session:
+            return Response({
+                'is_active': True,
+                'session_id': session.id,
+                'qr_token': session.qr_token,
+                'started_at': session.date_time.isoformat(),
+                'qr_expires_at': session.qr_expires_at.isoformat(),
+            })
+        return Response({'is_active': False})
 
 
 class AttendanceScanView(APIView):
@@ -404,6 +522,16 @@ class CourseAttendanceReportView(APIView):
                 'attendance_pct':  attendance_pct,
             })
 
+        # Compute total instructor hours from all session duration_minutes
+        from django.db.models import Sum
+        total_mins_agg = (
+            Session.objects
+            .filter(course=course, semester=semester)
+            .aggregate(total=Sum('duration_minutes'))
+        )
+        total_mins = total_mins_agg['total'] or 0.0
+        total_instructor_hours = round(total_mins / 60, 2)
+
         return Response({
             'course_name':    course.name,
             'course_code':    course.code,
@@ -412,6 +540,7 @@ class CourseAttendanceReportView(APIView):
             'semester_name':  semester.name,
             'total_lectures': semester.total_lectures,
             'lectures_held':  total_lectures_held,
+            'total_instructor_hours': total_instructor_hours,
             'students':       student_rows,
         })
 

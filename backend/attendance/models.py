@@ -42,6 +42,10 @@ class Session(models.Model):
     date_time = models.DateTimeField(auto_now_add=True)
     qr_token = models.CharField(max_length=100, unique=True, db_index=True)
     qr_expires_at = models.DateTimeField()
+    # ── Duration tracking ─────────────────────────────────────────────────────
+    end_time = models.DateTimeField(null=True, blank=True)
+    duration_minutes = models.FloatField(null=True, blank=True)
+    teacher_note = models.TextField(blank=True, default='')
 
     class Meta:
         ordering = ['-date_time']
@@ -58,6 +62,15 @@ class Session(models.Model):
         if not self.qr_expires_at:
             self.qr_expires_at = now() + timedelta(minutes=15)
         super().save(*args, **kwargs)
+
+    def record_end(self, timestamp=None):
+        """Overwrite end_time with `timestamp` (defaults to now) and
+        recalculate duration_minutes from session start.  Called on every
+        student end-scan so the final value reflects the last scanner."""
+        self.end_time = timestamp or now()
+        delta = self.end_time - self.date_time
+        self.duration_minutes = round(delta.total_seconds() / 60, 1)
+        self.save(update_fields=['end_time', 'duration_minutes'])
 
     def __str__(self):
         return f"{self.course.code} — {self.date_time.strftime('%Y-%m-%d %H:%M')}"
