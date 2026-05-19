@@ -8,6 +8,9 @@ import {
 import StatsBar from '../components/admin/StatsBar';
 import DataTable from '../components/admin/DataTable';
 import NestedAssignModal from '../components/admin/NestedAssignModal';
+import CascadeFilterBar from '../components/admin/CascadeFilterBar';
+import ProfessorMultiSelect from '../components/admin/ProfessorMultiSelect';
+import ProfessorChipCell from '../components/admin/ProfessorChipCell';
 import Select from 'react-select';
 
 // ── Tab config ────────────────────────────────────────────────────────────────
@@ -36,6 +39,8 @@ const COLUMNS = {
     { key: 'username',        label: 'Username' },
     { key: 'name',            label: 'Name' },
     { key: 'department_name', label: 'Department' },
+    { key: 'major_name',      label: 'Major' },
+    { key: 'study_year_name', label: 'Year' },
   ],
   professors: [
     { key: 'professor_id',    label: 'ID' },
@@ -47,6 +52,8 @@ const COLUMNS = {
     { key: 'code',            label: 'Code' },
     { key: 'name',            label: 'Name' },
     { key: 'department_name', label: 'Department' },
+    { key: 'study_year_name', label: 'Study Year' },
+    { key: 'professors',      label: 'Professors', render: item => <ProfessorChipCell professors={item.professors} /> },
   ],
   assignments: [
     { key: 'professor_name',  label: 'Professor' },
@@ -146,16 +153,45 @@ const AdminDashboard = () => {
   const [allCourses,    setAllCourses]    = useState([]);
   const [allSemesters,  setAllSemesters]  = useState([]);
   const [allDepartments, setAllDepartments] = useState([]);
+  const [allStudyYears,  setAllStudyYears]  = useState([]);
+  const [allMajors,      setAllMajors]      = useState([]);
+
+  // Cascade Filter State
+  const [filterState, setFilterState] = useState({
+    department: null,
+    studyYear: null,
+    professor: null,
+    major: null
+  });
 
   // ── Fetch table data ────────────────────────────────────────────────────────
   const fetchData = useCallback(async (tab, search = searchQuery, pg = page) => {
     setLoading(true);
     try {
-      let qs = search ? `?search=${encodeURIComponent(search)}` : '?';
-      // Students endpoint is paginated
+      let params = new URLSearchParams();
+      if (search) params.append('search', search);
+      
       if (tab === 'students') {
-        qs += `${search ? '&' : ''}page=${pg}&page_size=${PAGE_SIZE}`;
+        params.append('page', pg);
+        params.append('page_size', PAGE_SIZE);
       }
+      
+      // Apply cascade filters for specific tabs
+      if (['courses', 'professors', 'students'].includes(tab)) {
+        if (filterState.department) params.append('department_id', filterState.department);
+      }
+      if (['courses', 'students'].includes(tab)) {
+        if (filterState.studyYear) params.append('study_year_id', filterState.studyYear);
+      }
+      if (tab === 'courses') {
+        if (filterState.professor) params.append('professor_id', filterState.professor);
+      }
+      if (tab === 'students') {
+        if (filterState.major) params.append('major_id', filterState.major);
+      }
+      
+      const qs = params.toString() ? `?${params.toString()}` : '';
+      
       const res = await api.get(`${EP[tab]}${qs}`);
       // Paginated response has { count, next, previous, results }
       if (tab === 'students' && res.data?.results !== undefined) {
@@ -184,6 +220,14 @@ const AdminDashboard = () => {
     if (activeTab === 'students') fetchData('students', searchQuery, page);
   }, [page]);
 
+  // Re-fetch when cascade filters change
+  useEffect(() => {
+    if (['courses', 'professors', 'students'].includes(activeTab)) {
+      setPage(1);
+      fetchData(activeTab, searchQuery, 1);
+    }
+  }, [filterState]);
+
 
   // ── Fetch stats ─────────────────────────────────────────────────────────────
   const fetchStats = useCallback(async () => {
@@ -209,22 +253,26 @@ const AdminDashboard = () => {
   const loadRelations = useCallback(async () => {
     try {
       // Need a larger page size to fetch students for the dropdown if paginated
-      const [st, pr, co, sem, dept] = await Promise.all([
+      const [st, pr, co, sem, dept, sy, mj] = await Promise.all([
         api.get(`${EP.students}?page=1&page_size=1000`).catch(() => ({ data: { results: [] } })),
         api.get(EP.professors).catch(() => ({ data: [] })),
         api.get(EP.courses).catch(() => ({ data: [] })),
         api.get('semesters/').catch(() => ({ data: [] })),
         api.get('departments/').catch(() => ({ data: [] })),
+        api.get('study-years/').catch(() => ({ data: [] })),
+        api.get('majors/').catch(() => ({ data: [] })),
       ]);
       setAllStudents(st.data.results !== undefined ? st.data.results : (st.data || []));
       setAllProfessors(pr.data.results !== undefined ? pr.data.results : (pr.data || []));
       setAllCourses(co.data);
       setAllSemesters(sem.data);
       setAllDepartments(dept.data);
+      setAllStudyYears(sy.data);
+      setAllMajors(mj.data);
     } catch (e) { console.error(e); }
   }, []);
 
-  useEffect(() => { fetchStats(); }, []);
+  useEffect(() => { fetchStats(); loadRelations(); }, []);
   useEffect(() => {
     if (['assignments', 'enrollments'].includes(activeTab)) loadRelations();
   }, [activeTab]);
@@ -334,6 +382,22 @@ const AdminDashboard = () => {
              api.post(EP[activeTab], { ...formData, course: courseId })
           )
         );
+      } else if (activeTab === 'courses') {
+        // Create course first
+        const courseData = { ...formData };
+        delete courseData.professors;
+        const res = await api.post(EP.courses, courseData);
+        
+        // Then assign professors if any
+        if (formData.professors && formData.professors.length > 0) {
+          const activeSemester = allSemesters.find(s => s.is_active);
+          if (activeSemester) {
+            await api.post(`courses/${res.data.id}/assign-professors/`, {
+              semester_id: activeSemester.id,
+              professor_ids: formData.professors
+            });
+          }
+        }
       } else {
         await api.post(EP[activeTab], formData);
       }
@@ -356,28 +420,49 @@ const AdminDashboard = () => {
           <>
             <Inp label="Student ID" name="student_id" value={formData.student_id||''} onChange={change} />
             <Inp label="Full Name" name="name" value={formData.name||''} onChange={change} />
-            <Inp label="Major/Specialization" name="student_major" value={formData.student_major||''} required={false} onChange={change} />
             <Sel label="Department" name="department" options={allDepartments} valKey="id" lblFn={d => d.name} value={formData.department||''} onChange={change} />
+            <Sel label="Major/Specialization" name="major" options={formData.department ? allMajors.filter(m => m.department === parseInt(formData.department)) : []} valKey="id" lblFn={m => m.name} value={formData.major||''} onChange={change} />
+            <Sel label="Study Year" name="study_year" options={allStudyYears} valKey="id" lblFn={y => y.name} value={formData.study_year||''} onChange={change} />
             <Inp label="Password" name="password" type="password" value={formData.password||''} onChange={change} />
           </>
         );
       case 'professors':
         return (
-          <>
+          <div className="space-y-4">
             <Inp label="Username" name="username" value={formData.username||''} onChange={change} />
             <Inp label="Password" name="password" type="password" value={formData.password||''} onChange={change} />
             <Inp label="Full Name" name="name" value={formData.name||''} onChange={change} />
             <Inp label="Professor ID" name="professor_id" value={formData.professor_id||''} onChange={change} />
-            <Sel label="Department" name="department" options={allDepartments} valKey="id" lblFn={d => d.name} value={formData.department||''} onChange={change} />
-          </>
+            <div>
+              <label className="form-label block mb-1">Departments</label>
+              <Select
+                isMulti
+                options={allDepartments.map(d => ({ value: d.id, label: d.name }))}
+                onChange={vals => setFormData(f => ({ ...f, departments: vals ? vals.map(v => v.value) : [] }))}
+                value={formData.departments ? allDepartments.filter(d => formData.departments.includes(d.id)).map(d => ({ value: d.id, label: d.name })) : []}
+                placeholder="Select Departments..."
+                menuPortalTarget={document.body}
+                styles={{ menuPortal: base => ({ ...base, zIndex: 9999 }) }}
+              />
+            </div>
+          </div>
         );
       case 'courses':
         return (
-          <>
+          <div className="space-y-4">
             <Inp label="Course Code" name="code" value={formData.code||''} onChange={change} />
             <Inp label="Course Name" name="name" value={formData.name||''} onChange={change} />
             <Sel label="Department" name="department" options={allDepartments} valKey="id" lblFn={d => d.name} value={formData.department||''} onChange={change} />
-          </>
+            <Sel label="Study Year" name="study_year" options={allStudyYears} valKey="id" lblFn={y => y.name} value={formData.study_year||''} onChange={change} />
+            <div>
+              <label className="form-label block mb-1">Professors</label>
+              <ProfessorMultiSelect
+                options={allProfessors.map(p => ({ value: p.id, label: p.name }))}
+                onChange={vals => setFormData(f => ({ ...f, professors: vals ? vals.map(v => v.value) : [] }))}
+                value={formData.professors ? allProfessors.filter(p => formData.professors.includes(p.id)).map(p => ({ value: p.id, label: p.name })) : []}
+              />
+            </div>
+          </div>
         );
       case 'enrollments':
         return (
@@ -486,6 +571,22 @@ const AdminDashboard = () => {
           </button>
         ))}
       </div>
+
+      {/* ── Cascade Filters ── */}
+      {['courses', 'professors', 'students'].includes(activeTab) && (
+        <CascadeFilterBar
+          activeTab={activeTab}
+          departments={allDepartments}
+          studyYears={allStudyYears}
+          professors={allProfessors}
+          majors={filterState.department ? allMajors.filter(m => m.department === filterState.department) : allMajors}
+          selectedDepartment={filterState.department}
+          selectedStudyYear={filterState.studyYear}
+          selectedProfessor={filterState.professor}
+          selectedMajor={filterState.major}
+          onFilterChange={setFilterState}
+        />
+      )}
 
       {/* ── Content card ── */}
       <div className="float-card p-5">
@@ -652,6 +753,8 @@ const AdminDashboard = () => {
         isOpen={showNestedModal}
         onClose={() => setShowNestedModal(false)}
         semesters={allSemesters}
+        professors={allProfessors}
+        courses={allCourses}
         onSuccess={() => {
           setShowNestedModal(false);
           fetchData('assignments');

@@ -15,6 +15,37 @@ class Department(models.Model):
     def __str__(self):
         return f"{self.code} - {self.name}"
 
+class Major(models.Model):
+    """An academic major or specialization within a department."""
+    name = models.CharField(max_length=100)
+    department = models.ForeignKey(
+        Department, on_delete=models.CASCADE, related_name='majors'
+    )
+
+    class Meta:
+        ordering = ['name']
+        unique_together = ('name', 'department')
+        verbose_name = 'Major'
+        verbose_name_plural = 'Majors'
+
+    def __str__(self):
+        return f"{self.name} ({self.department.code})"
+
+
+
+class StudyYear(models.Model):
+    """A study year within the university (e.g., First Year, Second Year)."""
+    name = models.CharField(max_length=100, unique=True)
+    order = models.PositiveSmallIntegerField(default=1, help_text="Used for sorting years (1 for First Year, 2 for Second Year, etc.)")
+
+    class Meta:
+        ordering = ['order', 'name']
+        verbose_name = 'Study Year'
+        verbose_name_plural = 'Study Years'
+
+    def __str__(self):
+        return self.name
+
 
 class Semester(models.Model):
     """An academic semester with start/end dates and a lecture quota per course."""

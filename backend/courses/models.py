@@ -10,6 +10,10 @@ class Course(models.Model):
     department = models.ForeignKey(
         Department, on_delete=models.CASCADE, related_name='courses'
     )
+    study_year = models.ForeignKey(
+        'core.StudyYear', on_delete=models.SET_NULL, null=True, blank=True, related_name='courses',
+        help_text='The study year this course belongs to.'
+    )
 
     class Meta:
         ordering = ['code']

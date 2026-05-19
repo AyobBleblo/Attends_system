@@ -1,10 +1,22 @@
-CORS_ALLOW_ALL_ORIGINS = True{By default, 
-browsers block JavaScript from talking to a different server 
-(e.g., React on localhost:3000 can't call Django on localhost:8000). This setting says 
-"allow ALL origins." Fine for development, but in production you'd restrict it.}
-SIMPLE_JWT = {
-    'ACCESS_TOKEN_LIFETIME': timedelta(hours=8),   # Login stays valid 8 hours
-    'REFRESH_TOKEN_LIFETIME': timedelta(days=7),    # Refresh token valid 7 days
-    'ROTATE_REFRESH_TOKENS': True,
-}
-i need to remove unsecure : 'django.contrib.auth.hashers.MD5PasswordHasher', 
+Major/Specializaion needs to be constant in admin interface shoud be drop down menu 
+contees from defernet majors we be add in future for examble when i cleck in department Computer science
+it will show me the majors in computer science show examle :
+- Software Engineering 
+- Artificial Intelligence 
+- networks
+- DATA science 
+- Cybersecurity
+and for the midcale we be show Human medicine, Pharmacy
+
+and in admin interdace shoud be see the in students tab
+ it will show me the students in the department and the major and the years
+ and shoud be filters for searching students
+  - by year
+  - by major
+  - by department
+  - by academic year (first year, second year, third year, fourth year, fifth year, sixth year)
+
+and when i add prof from the UI and chose all the field it's give me big error 
+
+
+Assignments botton in admin dashboard it's need to write the text by your hand and it's big mistake 

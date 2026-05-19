@@ -8,10 +8,47 @@ from accounts.models import Professor
 
 class CourseSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
+    study_year_name = serializers.CharField(source='study_year.name', read_only=True)
+    professors = serializers.SerializerMethodField()
 
     class Meta:
         model = Course
-        fields = ['id', 'code', 'name', 'department', 'department_name']
+        fields = ['id', 'code', 'name', 'department', 'department_name', 'study_year', 'study_year_name', 'professors']
+
+    def get_professors(self, obj):
+        try:
+            semester = Semester.objects.get(is_active=True)
+            assignments = CourseAssignment.objects.filter(course=obj, semester=semester).select_related('professor')
+            return [{'id': a.professor.id, 'name': a.professor.name} for a in assignments]
+        except Semester.DoesNotExist:
+            return []
+
+
+class CourseProfessorBulkAssignSerializer(serializers.Serializer):
+    course_id = serializers.IntegerField()
+    semester_id = serializers.IntegerField()
+    professor_ids = serializers.ListField(
+        child=serializers.IntegerField(),
+        allow_empty=True
+    )
+
+    def save(self):
+        course_id = self.validated_data['course_id']
+        semester_id = self.validated_data['semester_id']
+        professor_ids = self.validated_data['professor_ids']
+
+        with transaction.atomic():
+            # Delete old assignments for this course and semester
+            CourseAssignment.objects.filter(course_id=course_id, semester_id=semester_id).delete()
+            
+            # Create new ones
+            for prof_id in professor_ids:
+                CourseAssignment.objects.create(
+                    course_id=course_id,
+                    semester_id=semester_id,
+                    professor_id=prof_id
+                )
+        return self.validated_data
 
 
 class CourseAssignmentSerializer(serializers.ModelSerializer):

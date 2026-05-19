@@ -1,12 +1,15 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import DepartmentListView, ActiveSemesterView, SemesterListView, StatsView, AdminSemesterViewSet
+from .views import DepartmentListView, ActiveSemesterView, SemesterListView, StatsView, AdminSemesterViewSet, StudyYearListView, AdminStudyYearViewSet, MajorListView
 
 router = DefaultRouter()
 router.register(r'admin/semesters', AdminSemesterViewSet, basename='admin-semesters')
+router.register(r'admin/study-years', AdminStudyYearViewSet, basename='admin-study-years')
 
 urlpatterns = [
     path('departments/', DepartmentListView.as_view(), name='department-list'),
+    path('majors/', MajorListView.as_view(), name='major-list'),
+    path('study-years/', StudyYearListView.as_view(), name='study-year-list'),
     path('semesters/', SemesterListView.as_view(), name='semester-list'),
     path('semesters/active/', ActiveSemesterView.as_view(), name='active-semester'),
     path('stats/', StatsView.as_view(), name='stats'),

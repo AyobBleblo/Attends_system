@@ -5,8 +5,8 @@ from rest_framework import status
 from rest_framework.permissions import AllowAny, IsAdminUser
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import cache_page
-from .models import Department, Semester
-from .serializers import DepartmentSerializer, SemesterSerializer
+from .models import Department, Semester, StudyYear, Major
+from .serializers import DepartmentSerializer, SemesterSerializer, StudyYearSerializer, MajorSerializer
 from accounts.models import Student, Professor
 from courses.models import Course
 
@@ -18,6 +18,30 @@ class DepartmentListView(APIView):
     def get(self, request):
         departments = Department.objects.all()
         serializer = DepartmentSerializer(departments, many=True)
+        return Response(serializer.data)
+
+
+class MajorListView(APIView):
+    permission_classes = [AllowAny]
+
+    @method_decorator(cache_page(60 * 15))
+    def get(self, request):
+        majors = Major.objects.all()
+        department_id = request.query_params.get('department_id')
+        if department_id:
+            majors = majors.filter(department_id=department_id)
+        majors = majors.order_by('name')
+        serializer = MajorSerializer(majors, many=True)
+        return Response(serializer.data)
+
+
+class StudyYearListView(APIView):
+    permission_classes = [AllowAny]
+
+    @method_decorator(cache_page(60 * 15))
+    def get(self, request):
+        study_years = StudyYear.objects.all().order_by('order', 'name')
+        serializer = StudyYearSerializer(study_years, many=True)
         return Response(serializer.data)
 
 
@@ -71,4 +95,10 @@ class StatsView(APIView):
 class AdminSemesterViewSet(viewsets.ModelViewSet):
     queryset = Semester.objects.all().order_by('-start_date')
     serializer_class = SemesterSerializer
+    permission_classes = [IsAdminUser]
+
+
+class AdminStudyYearViewSet(viewsets.ModelViewSet):
+    queryset = StudyYear.objects.all().order_by('order', 'name')
+    serializer_class = StudyYearSerializer
     permission_classes = [IsAdminUser]

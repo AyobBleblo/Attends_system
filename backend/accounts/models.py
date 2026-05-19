@@ -13,14 +13,14 @@ class Student(models.Model):
     department = models.ForeignKey(
         Department, on_delete=models.CASCADE, related_name='students'
     )
-    # student_major is a free-text specialization (e.g. "AI & ML", "Networking").
-    # It is intentionally separate from `department` which is an organisational/college unit FK.
-    student_major = models.CharField(
-        max_length=100,
-        blank=True,
-        default='',
-        help_text='Student\'s academic major/specialization (e.g. "Computer Science", "AI & Data Science"). '
-                  'Distinct from the college Department.'
+    study_year = models.ForeignKey(
+        'core.StudyYear', on_delete=models.SET_NULL, null=True, blank=True, related_name='students',
+        help_text='The current study year of the student.'
+    )
+    # student_major is now a ForeignKey to the Major model
+    major = models.ForeignKey(
+        'core.Major', on_delete=models.SET_NULL, null=True, blank=True, related_name='students',
+        help_text='Student\'s academic major/specialization.'
     )
 
     class Meta:
@@ -39,8 +39,8 @@ class Professor(models.Model):
     )
     professor_id = models.CharField(max_length=20, unique=True, db_index=True)
     name = models.CharField(max_length=100)
-    department = models.ForeignKey(
-        Department, on_delete=models.CASCADE, related_name='professors'
+    departments = models.ManyToManyField(
+        Department, related_name='professors'
     )
 
     class Meta:

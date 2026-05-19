@@ -37,12 +37,27 @@ class AdminStudentViewSet(viewsets.ModelViewSet):
     """
     # select_related: join department + user in ONE SQL query instead of
     # issuing separate queries for each row.
-    queryset = Student.objects.select_related('department', 'user').all()
+    queryset = Student.objects.select_related('department', 'user', 'study_year', 'major').all()
     serializer_class = AdminStudentSerializer
     permission_classes = [IsAdminUser]
     pagination_class = StudentPagination
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'student_id', 'user__username', 'user__email']
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        department_id = self.request.query_params.get('department_id')
+        study_year_id = self.request.query_params.get('study_year_id')
+        major_id = self.request.query_params.get('major_id')
+
+        if department_id:
+            queryset = queryset.filter(department_id=department_id)
+        if study_year_id:
+            queryset = queryset.filter(study_year_id=study_year_id)
+        if major_id:
+            queryset = queryset.filter(major_id=major_id)
+        
+        return queryset
 
     @action(detail=True, methods=['post'])
     def reset_password(self, request, pk=None):
@@ -86,11 +101,18 @@ class AdminStudentViewSet(viewsets.ModelViewSet):
 
 
 class AdminProfessorViewSet(viewsets.ModelViewSet):
-    queryset = Professor.objects.select_related('department', 'user').all()
+    queryset = Professor.objects.prefetch_related('departments', 'user').all()
     serializer_class = AdminProfessorSerializer
     permission_classes = [IsAdminUser]
     filter_backends = [filters.SearchFilter]
     search_fields = ['name', 'professor_id', 'user__username', 'user__email']
+    
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        department_id = self.request.query_params.get('department_id')
+        if department_id:
+            queryset = queryset.filter(departments__id=department_id).distinct()
+        return queryset
 
     @action(detail=True, methods=['post'])
     def reset_password(self, request, pk=None):
@@ -175,7 +197,11 @@ class ProfessorListView(APIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
-        professors = Professor.objects.select_related('department').all()
+        department_id = request.query_params.get('department_id')
+        professors = Professor.objects.all()
+        if department_id:
+            professors = professors.filter(departments__id=department_id)
+        professors = professors.prefetch_related('departments').distinct()
         serializer = ProfessorSerializer(professors, many=True)
         return Response(serializer.data)
 

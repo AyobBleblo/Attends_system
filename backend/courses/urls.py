@@ -1,6 +1,6 @@
 from django.urls import path, include
 from rest_framework.routers import DefaultRouter
-from .views import CourseListView, AdminCourseViewSet, AdminCourseAssignmentViewSet, NestedAssignmentCreateView
+from .views import CourseListView, AdminCourseViewSet, AdminCourseAssignmentViewSet, NestedAssignmentCreateView, CourseProfessorAssignView
 
 router = DefaultRouter()
 router.register(r'admin/courses', AdminCourseViewSet, basename='admin-courses')
@@ -8,6 +8,7 @@ router.register(r'admin/assignments', AdminCourseAssignmentViewSet, basename='ad
 
 urlpatterns = [
     path('courses/', CourseListView.as_view(), name='course-list'),
+    path('courses/<int:course_id>/assign-professors/', CourseProfessorAssignView.as_view(), name='course-assign-professors'),
     path('courses/admin/nested-assign/', NestedAssignmentCreateView.as_view(), name='nested-assign'),
     path('', include(router.urls)),
 ]

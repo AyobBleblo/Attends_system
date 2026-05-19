@@ -7,30 +7,37 @@ from core.serializers import DepartmentSerializer
 
 class StudentSerializer(serializers.ModelSerializer):
     department_name = serializers.CharField(source='department.name', read_only=True)
+    study_year_name = serializers.CharField(source='study_year.name', read_only=True)
+    major_name = serializers.CharField(source='major.name', read_only=True)
     username = serializers.CharField(source='user.username', read_only=True)
 
     class Meta:
         model = Student
-        fields = ['id', 'student_id', 'name', 'department', 'department_name', 'student_major', 'username']
+        fields = ['id', 'student_id', 'name', 'department', 'department_name', 'study_year', 'study_year_name', 'major', 'major_name', 'username']
 
 
 class ProfessorSerializer(serializers.ModelSerializer):
-    department_name = serializers.CharField(source='department.name', read_only=True)
+    department_names = serializers.SerializerMethodField(read_only=True)
     username = serializers.CharField(source='user.username', read_only=True)
 
     class Meta:
         model = Professor
-        fields = ['id', 'professor_id', 'name', 'department', 'department_name', 'username']
+        fields = ['id', 'professor_id', 'name', 'departments', 'department_names', 'username']
+        
+    def get_department_names(self, obj):
+        return [d.name for d in obj.departments.all()]
 
 
 class AdminStudentSerializer(serializers.ModelSerializer):
     username = serializers.CharField(write_only=True, required=False)
     password = serializers.CharField(write_only=True)
     department_name = serializers.CharField(source='department.name', read_only=True)
+    study_year_name = serializers.CharField(source='study_year.name', read_only=True)
+    major_name = serializers.CharField(source='major.name', read_only=True)
 
     class Meta:
         model = Student
-        fields = ['id', 'student_id', 'name', 'department', 'department_name', 'student_major', 'username', 'password']
+        fields = ['id', 'student_id', 'name', 'department', 'department_name', 'study_year', 'study_year_name', 'major', 'major_name', 'username', 'password']
 
     def validate_username(self, value):
         if User.objects.filter(username=value).exists():
@@ -76,11 +83,14 @@ class AdminStudentSerializer(serializers.ModelSerializer):
 class AdminProfessorSerializer(serializers.ModelSerializer):
     username = serializers.CharField(write_only=True)
     password = serializers.CharField(write_only=True)
-    department_name = serializers.CharField(source='department.name', read_only=True)
+    department_names = serializers.SerializerMethodField(read_only=True)
 
     class Meta:
         model = Professor
-        fields = ['id', 'professor_id', 'name', 'department', 'department_name', 'username', 'password']
+        fields = ['id', 'professor_id', 'name', 'departments', 'department_names', 'username', 'password']
+        
+    def get_department_names(self, obj):
+        return [d.name for d in obj.departments.all()]
 
     def validate_username(self, value):
         if User.objects.filter(username=value).exists():
@@ -95,9 +105,12 @@ class AdminProfessorSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         username = validated_data.pop('username')
         password = validated_data.pop('password')
+        departments = validated_data.pop('departments', [])
         with transaction.atomic():
             user = User.objects.create_user(username=username, password=password)
             professor = Professor.objects.create(user=user, **validated_data)
+            if departments:
+                professor.departments.set(departments)
         return professor
 
     def to_representation(self, instance):

@@ -81,7 +81,7 @@ docker-compose.yml    → Orchestrates: db, redis, backend, frontend
 | Session Duration     | React/Flutter/API | Dynamic end-time tracking via student check-out or manual override |
 | Course Dashboard     | Flutter           | Lists enrolled courses with attendance stats       |
 | Attendance Reports   | React (Professor) | Per-course attendance breakdown with charts & hours|
-| Admin Dashboard      | React (Admin)     | Student/course/enrollment CRUD + system stats      |
+| Admin Dashboard      | React (Admin)     | Student/course/enrollment CRUD, system stats, academic hierarchy (StudyYears), batch assignments |
 | Device Fingerprinting| React + Backend   | Prevents proxying — binds device to student account|
 | Profile Management   | Flutter           | Tab-based: Home + Profile via `MainShell`          |
 
@@ -100,6 +100,8 @@ docker-compose.yml    → Orchestrates: db, redis, backend, frontend
 - Modal dialogs for enrollment creation / course detail editing
 - Responsive sidebar: collapsible with glass tooltip labels in collapsed mode
 - Safe-area CSS insets for mobile browser compatibility
+- Advanced Filtering: `CascadeFilterBar` for intuitive navigation in Admin Dashboard
+- Batch Operations: `ProfessorMultiSelect` for efficient batch course assignments
 
 ---
 
@@ -135,6 +137,7 @@ docker-compose.yml    → Orchestrates: db, redis, backend, frontend
 ### Django ORM
 - Custom `User` model in `accounts` app
 - Roles: `student`, `professor`, `admin`
+- Academic Hierarchy: `StudyYear` model; `Professor` uses Many-to-Many for departments; `Student`/`Course` linked to `StudyYear`
 - Enrollment model links Students ↔ Courses
 
 ---
