@@ -147,6 +147,13 @@
     @apply text-sm font-medium text-slate-500 dark:text-slate-400 hover:text-[#D4AF37] transition-colors duration-150;
   }
 
+  /* Active nav-link — gold left-border accent + glow */
+  .nav-link-active {
+    @apply text-sm font-semibold text-[#D4AF37] border-l-4 border-[#D4AF37] pl-3 rounded-r-lg
+           bg-[#D4AF37]/8 dark:bg-[#D4AF37]/10 transition-all duration-200;
+    box-shadow: inset 4px 0 12px rgba(212,175,55,0.12), 0 0 12px rgba(212,175,55,0.15);
+  }
+
   /* Shimmer skeleton */
   .skeleton {
     @apply rounded-lg animate-pulse bg-gray-200 dark:bg-slate-800;

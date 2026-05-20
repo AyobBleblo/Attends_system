@@ -267,7 +267,7 @@ class MeView(APIView):
                 'id': professor.id,
                 'professor_id': professor.professor_id,
                 'name': professor.name,
-                'department': professor.department.name,
+                'department': professor.departments.first().name if professor.departments.exists() else None,
                 'courses': courses,
             })
 

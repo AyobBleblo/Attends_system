@@ -3,7 +3,7 @@ import { Dialog } from '@headlessui/react';
 import api from '../api/axios';
 import {
   Users, GraduationCap, BookOpen, Link2, ClipboardList,
-  UserPlus, RefreshCw, X, Loader2, KeyRound, Search, Unlock, Calendar
+  UserPlus, RefreshCw, X, Loader2, KeyRound, Search, Unlock, Calendar, ChevronDown
 } from 'lucide-react';
 import StatsBar from '../components/admin/StatsBar';
 import DataTable from '../components/admin/DataTable';
@@ -11,6 +11,10 @@ import NestedAssignModal from '../components/admin/NestedAssignModal';
 import CascadeFilterBar from '../components/admin/CascadeFilterBar';
 import ProfessorMultiSelect from '../components/admin/ProfessorMultiSelect';
 import ProfessorChipCell from '../components/admin/ProfessorChipCell';
+import TodayAtAGlance from '../components/admin/TodayAtAGlance';
+import AttendanceHeatmap from '../components/admin/AttendanceHeatmap';
+import AnomaliesPanel from '../components/admin/AnomaliesPanel';
+import Breadcrumb from '../components/shared/Breadcrumb';
 import Select from 'react-select';
 
 // ── Tab config ────────────────────────────────────────────────────────────────
@@ -132,6 +136,7 @@ const AdminDashboard = () => {
   const [counts, setCounts] = useState({});
   const [showModal, setShowModal] = useState(false);
   const [showNestedModal, setShowNestedModal] = useState(false);
+  const [showHeatmap, setShowHeatmap] = useState(false);
   const [formData, setFormData] = useState({});
   const [formError, setFormError] = useState(null);
   const [formLoading, setFormLoading] = useState(false);
@@ -516,10 +521,23 @@ const AdminDashboard = () => {
     courses: 'bg-sky-500', assignments: 'bg-amber-500', enrollments: 'bg-emerald-500', semesters: 'bg-rose-500'
   };
 
+  // Build breadcrumb crumbs from active tab
+  const breadcrumbs = [
+    { label: 'Dashboard' },
+    { label: TABS.find(t => t.key === activeTab)?.label ?? activeTab },
+  ];
+
+  const clearFilters = () => setFilterState({ department: null, studyYear: null, professor: null, major: null });
+  const hasActiveFilters = Object.values(filterState).some(Boolean);
+
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
+
+      {/* ── Breadcrumb ── */}
+      <Breadcrumb crumbs={breadcrumbs} />
+
       {/* ── Header ── */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-8 bg-white dark:bg-slate-900/80 p-6 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] dark:shadow-none border border-gray-100 dark:border-slate-800/60">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 bg-white dark:bg-slate-900/80 p-6 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] dark:shadow-none border border-gray-100 dark:border-slate-800/60">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
             Admin Dashboard
@@ -550,8 +568,23 @@ const AdminDashboard = () => {
         </div>
       </div>
 
+      {/* ── Today at a Glance ── */}
+      <TodayAtAGlance />
+
       {/* ── Stats Bar ── */}
       <StatsBar counts={counts} loading={statsLoading} />
+
+      {/* ── Heatmap (collapsible) ── */}
+      <div className="mb-2">
+        <button
+          onClick={() => setShowHeatmap(v => !v)}
+          className="flex items-center gap-2 text-xs font-semibold text-slate-400 dark:text-slate-500 hover:text-[#D4AF37] transition-colors mb-2"
+        >
+          <ChevronDown size={13} className={`transition-transform duration-200 ${showHeatmap ? 'rotate-180' : ''}`} />
+          {showHeatmap ? 'Hide' : 'Show'} Attendance Heatmap
+        </button>
+        {showHeatmap && <AttendanceHeatmap />}
+      </div>
 
       {/* ── Tabs ── */}
       <div className="flex gap-2 flex-wrap mb-6">
@@ -563,7 +596,7 @@ const AdminDashboard = () => {
               inline-flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-semibold
               transition-all duration-150 border
               ${activeTab === key
-                ? `bg-[#D4AF37]/10 text-[#B8860B] border-[#D4AF37]/30 shadow-sm dark:bg-[#D4AF37]/20 dark:text-[#D4AF37]`
+                ? 'bg-[#D4AF37]/10 text-[#B8860B] border-[#D4AF37]/30 shadow-sm dark:bg-[#D4AF37]/20 dark:text-[#D4AF37]'
                 : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-gray-300 dark:hover:border-slate-600'}
             `}
           >
@@ -588,8 +621,10 @@ const AdminDashboard = () => {
         />
       )}
 
-      {/* ── Content card ── */}
-      <div className="float-card p-5">
+      {/* ── Two-column layout: main table | anomalies sidebar ── */}
+      <div className="flex flex-col xl:flex-row gap-6">
+        {/* Main content card */}
+        <div className="float-card p-5 flex-1 min-w-0">
         {/* Card header */}
         <div className="flex justify-between items-center mb-5 flex-wrap gap-3">
           <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
@@ -628,6 +663,7 @@ const AdminDashboard = () => {
           onDelete={handleDelete}
           actions={renderTableActions}
           emptyText={`No ${activeTab} found.`}
+          onClearFilters={hasActiveFilters ? clearFilters : undefined}
         />
 
         {/* Pagination controls — students only */}
@@ -655,7 +691,13 @@ const AdminDashboard = () => {
             </div>
           </div>
         )}
-      </div>
+        </div>{/* end main float-card */}
+
+        {/* Anomalies sidebar panel */}
+        <div className="xl:w-80 shrink-0">
+          <AnomaliesPanel />
+        </div>
+      </div>{/* end two-column */}
 
       {/* ── Generic Add Modal ── */}
       <Dialog open={showModal} onClose={() => setShowModal(false)} className="relative z-50">
