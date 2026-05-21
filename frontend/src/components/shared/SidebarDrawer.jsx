@@ -25,7 +25,10 @@ import ChangePasswordModal from './ChangePasswordModal';
 // ─────────────────────────────────────────────────────────────────────────────
 function getNavItems(role) {
   if (role === 'admin') {
-    return [{ to: '/admin-dashboard', icon: LayoutDashboard, label: 'Dashboard' }];
+    return [
+      { to: '/admin-dashboard', icon: LayoutDashboard, label: 'Dashboard' },
+      { to: '/admin-report',    icon: BarChart2,        label: 'Reports'   },
+    ];
   }
   if (role === 'professor') {
     return [

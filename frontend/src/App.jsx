@@ -8,6 +8,7 @@ import ProfessorView   from './pages/ProfessorView';
 import StudentScan     from './pages/StudentScan';
 import AttendanceReport from './pages/AttendanceReport';
 import AdminDashboard  from './pages/AdminDashboard';
+import AdminReport     from './pages/AdminReport';
 import CourseDetails   from './pages/CourseDetails';
 import SidebarDrawer   from './components/shared/SidebarDrawer';
 
@@ -90,6 +91,10 @@ function AppContent() {
           <Route
             path="/admin-dashboard"
             element={<AdminRoute><AdminDashboard /></AdminRoute>}
+          />
+          <Route
+            path="/admin-report"
+            element={<AdminRoute><AdminReport /></AdminRoute>}
           />
           <Route
             path="/professor"
