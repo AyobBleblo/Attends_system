@@ -1,30 +1,31 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { Dialog } from '@headlessui/react';
 import api from '../api/axios';
 import {
   Users, GraduationCap, BookOpen, Link2, ClipboardList,
-  UserPlus, RefreshCw, X, Loader2, KeyRound, Search, Unlock, Calendar, ChevronDown
+  UserPlus, RefreshCw, X, Loader2, KeyRound, Search, Unlock, Calendar, ChevronDown,
+  Building2, Plus, Check, Trash2
 } from 'lucide-react';
 import StatsBar from '../components/admin/StatsBar';
-import DataTable from '../components/admin/DataTable';
+import DataTable, { nameToColor, initials } from '../components/admin/DataTable';
 import NestedAssignModal from '../components/admin/NestedAssignModal';
 import CascadeFilterBar from '../components/admin/CascadeFilterBar';
 import ProfessorMultiSelect from '../components/admin/ProfessorMultiSelect';
 import ProfessorChipCell from '../components/admin/ProfessorChipCell';
-import TodayAtAGlance from '../components/admin/TodayAtAGlance';
 import AttendanceHeatmap from '../components/admin/AttendanceHeatmap';
-import AnomaliesPanel from '../components/admin/AnomaliesPanel';
 import Breadcrumb from '../components/shared/Breadcrumb';
 import Select from 'react-select';
+import { useLanguage } from '../context/LanguageContext';
 
-// ── Tab config ────────────────────────────────────────────────────────────────
+// ── Tab config (labels resolved dynamically via t()) ─────────────────────────
 const TABS = [
-  { key: 'students',    label: 'Students',    icon: Users },
-  { key: 'professors',  label: 'Professors',  icon: GraduationCap },
-  { key: 'courses',     label: 'Courses',     icon: BookOpen },
-  { key: 'assignments', label: 'Assignments', icon: Link2 },
-  { key: 'enrollments', label: 'Enrollments', icon: ClipboardList },
-  { key: 'semesters',   label: 'Semesters',   icon: Calendar },
+  { key: 'students',    labelKey: 'students',    icon: Users },
+  { key: 'professors',  labelKey: 'professors',  icon: GraduationCap },
+  { key: 'courses',     labelKey: 'courses',     icon: BookOpen },
+  { key: 'assignments', labelKey: 'assignments', icon: Link2 },
+  { key: 'enrollments', labelKey: 'enrollments', icon: ClipboardList },
+  { key: 'semesters',   labelKey: 'semesters',   icon: Calendar },
+  { key: 'departments', labelKey: 'departments', icon: Building2 },
 ];
 
 const EP = {
@@ -34,65 +35,8 @@ const EP = {
   assignments: 'admin/assignments/',
   enrollments: 'admin/enrollments/',
   semesters:   'admin/semesters/',
-};
-
-// ── Column definitions per tab ────────────────────────────────────────────────
-const COLUMNS = {
-  students: [
-    { key: 'student_id',      label: 'ID' },
-    { key: 'username',        label: 'Username' },
-    { key: 'name',            label: 'Name' },
-    { key: 'department_name', label: 'Department' },
-    { key: 'major_name',      label: 'Major' },
-    { key: 'study_year_name', label: 'Year' },
-  ],
-  professors: [
-    { key: 'professor_id',    label: 'ID' },
-    { key: 'username',        label: 'Username' },
-    { key: 'name',            label: 'Name' },
-    { key: 'department_name', label: 'Department' },
-  ],
-  courses: [
-    { key: 'code',            label: 'Code' },
-    { key: 'name',            label: 'Name' },
-    { key: 'department_name', label: 'Department' },
-    { key: 'study_year_name', label: 'Study Year' },
-    { key: 'professors',      label: 'Professors', render: item => <ProfessorChipCell professors={item.professors} /> },
-  ],
-  assignments: [
-    { key: 'professor_name',  label: 'Professor' },
-    { key: 'course_code',     label: 'Course Code' },
-    { key: 'course_name',     label: 'Course Name' },
-    { key: 'semester_name',   label: 'Semester' },
-  ],
-  enrollments: [
-    {
-      key: 'student',
-      label: 'Student',
-      render: item => item.student_name || item.student_id || item.student,
-    },
-    {
-      key: 'course',
-      label: 'Course',
-      render: item => item.course_code || item.course,
-    },
-    {
-      key: 'semester',
-      label: 'Semester',
-      render: item => item.semester_name || item.semester,
-    },
-  ],
-  semesters: [
-    { key: 'name', label: 'Name' },
-    { key: 'start_date', label: 'Start Date' },
-    { key: 'end_date', label: 'End Date' },
-    { key: 'total_lectures', label: 'Total Lectures' },
-    {
-      key: 'is_active',
-      label: 'Active',
-      render: item => item.is_active ? 'Yes' : 'No',
-    },
-  ],
+  departments: 'admin/departments/',
+  majors:      'admin/majors/',
 };
 
 // ── Utility ───────────────────────────────────────────────────────────────────
@@ -129,8 +73,9 @@ const Sel = ({ label, name, options, valKey = 'id', lblFn, value, onChange }) =>
 
 // ── Main Component ────────────────────────────────────────────────────────────
 const AdminDashboard = () => {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('students');
-  const [data, setData] = useState({ students: [], professors: [], courses: [], assignments: [], enrollments: [], semesters: [] });
+  const [data, setData] = useState({ students: [], professors: [], courses: [], assignments: [], enrollments: [], semesters: [], departments: [], majors: [] });
   const [loading, setLoading] = useState(false);
   const [statsLoading, setStatsLoading] = useState(true);
   const [counts, setCounts] = useState({});
@@ -161,6 +106,12 @@ const AdminDashboard = () => {
   const [allStudyYears,  setAllStudyYears]  = useState([]);
   const [allMajors,      setAllMajors]      = useState([]);
 
+  // Safe Majors manager state
+  const [selectedDept, setSelectedDept] = useState(null);
+  const [selectedMajor, setSelectedMajor] = useState(null);
+  const [newMajorName, setNewMajorName] = useState('');
+  const [majorActionLoading, setMajorActionLoading] = useState(false);
+
   // Cascade Filter State
   const [filterState, setFilterState] = useState({
     department: null,
@@ -182,7 +133,7 @@ const AdminDashboard = () => {
       }
       
       // Apply cascade filters for specific tabs
-      if (['courses', 'professors', 'students'].includes(tab)) {
+      if (['courses', 'professors', 'students', 'departments'].includes(tab)) {
         if (filterState.department) params.append('department_id', filterState.department);
       }
       if (['courses', 'students'].includes(tab)) {
@@ -209,7 +160,7 @@ const AdminDashboard = () => {
     } catch (e) {
       console.error(e);
     } finally { setLoading(false); }
-  }, [searchQuery, page]);
+  }, [searchQuery, page, filterState]);
 
   // Handle Search Debounce — reset to page 1 on new search
   useEffect(() => {
@@ -227,7 +178,7 @@ const AdminDashboard = () => {
 
   // Re-fetch when cascade filters change
   useEffect(() => {
-    if (['courses', 'professors', 'students'].includes(activeTab)) {
+    if (['courses', 'professors', 'students', 'departments'].includes(activeTab)) {
       setPage(1);
       fetchData(activeTab, searchQuery, 1);
     }
@@ -259,7 +210,7 @@ const AdminDashboard = () => {
     try {
       // Need a larger page size to fetch students for the dropdown if paginated
       const [st, pr, co, sem, dept, sy, mj] = await Promise.all([
-        api.get(`${EP.students}?page=1&page_size=1000`).catch(() => ({ data: { results: [] } })),
+        api.get('students/').catch(() => ({ data: [] })),
         api.get(EP.professors).catch(() => ({ data: [] })),
         api.get(EP.courses).catch(() => ({ data: [] })),
         api.get('semesters/').catch(() => ({ data: [] })),
@@ -282,6 +233,102 @@ const AdminDashboard = () => {
     if (['assignments', 'enrollments'].includes(activeTab)) loadRelations();
   }, [activeTab]);
 
+  // ── Column definitions computed dynamically with closures ─────────────────
+  const columns = useMemo(() => ({
+    students: [
+      { key: 'student_id',      label: t('colID') },
+      { 
+        key: 'name',            
+        label: t('colName'),
+        render: item => (
+          <div className="flex items-center gap-3">
+            <div 
+              className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0 shadow-sm"
+              style={{ backgroundColor: nameToColor(item.name) }}
+            >
+              {initials(item.name)}
+            </div>
+            <div className="flex flex-col">
+              <span className="text-slate-800 dark:text-slate-200 font-semibold text-sm">{item.name}</span>
+              <span className="text-slate-400 dark:text-slate-500 text-xs">{item.username}</span>
+            </div>
+          </div>
+        )
+      },
+      { key: 'department_name', label: t('colDepartment') },
+      { key: 'major_name',      label: t('colMajor') },
+      { key: 'study_year_name', label: t('colYear') },
+    ],
+    professors: [
+      { key: 'professor_id',    label: t('colID') },
+      { 
+        key: 'name',            
+        label: t('colName'),
+        render: item => (
+          <div className="flex items-center gap-3">
+            <div 
+              className="w-8 h-8 rounded-full flex items-center justify-center text-[11px] font-bold text-white shrink-0 shadow-sm"
+              style={{ backgroundColor: nameToColor(item.name) }}
+            >
+              {initials(item.name)}
+            </div>
+            <div className="flex flex-col">
+              <span className="text-slate-800 dark:text-slate-200 font-semibold text-sm">{item.name}</span>
+              <span className="text-slate-400 dark:text-slate-500 text-xs">{item.username}</span>
+            </div>
+          </div>
+        )
+      },
+      { key: 'department_name', label: t('colDepartment') },
+    ],
+    courses: [
+      { key: 'code',            label: t('colCode') },
+      { key: 'name',            label: t('colName') },
+      { key: 'department_name', label: t('colDepartment') },
+      { key: 'study_year_name', label: t('colStudyYear') },
+      { key: 'professors',      label: t('colProfessors'), render: item => <ProfessorChipCell professors={item.professors} /> },
+    ],
+    assignments: [
+      { key: 'professor_name',  label: t('colProfessor') },
+      { key: 'course_code',     label: t('colCourseCode') },
+      { key: 'course_name',     label: t('colCourseName') },
+      { key: 'semester_name',   label: t('colSemester') },
+    ],
+    enrollments: [
+      {
+        key: 'student',
+        label: t('colStudent'),
+        render: item => item.student_name || item.student_id || item.student,
+      },
+      {
+        key: 'course',
+        label: t('colCourse'),
+        render: item => item.course_code || item.course,
+      },
+      {
+        key: 'semester',
+        label: t('colSemester'),
+        render: item => item.semester_name || item.semester,
+      },
+    ],
+    semesters: [
+      { key: 'name',           label: t('colName') },
+      { key: 'start_date',     label: t('colStartDate') },
+      { key: 'end_date',       label: t('colEndDate') },
+      { key: 'total_lectures', label: t('colTotalLec') },
+      {
+        key: 'is_active',
+        label: t('colActive'),
+        render: item => item.is_active ? t('yes') : t('no'),
+      },
+    ],
+    departments: [
+      { key: 'code', label: t('colCode') },
+      { key: 'name', label: t('colName') },
+    ],
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [t]);
+
   // ── Optimistic delete ───────────────────────────────────────────────────────
   const handleDelete = async (id) => {
     if (!window.confirm('Delete this record?')) return;
@@ -290,6 +337,7 @@ const AdminDashboard = () => {
     try {
       await api.delete(`${EP[activeTab]}${id}/`);
       fetchStats();
+      loadRelations();
     } catch (err) {
       setData(d => ({ ...d, [activeTab]: prev }));
       alert(`Failed to delete: ${formatError(err)}`);
@@ -410,6 +458,7 @@ const AdminDashboard = () => {
       setFormData({});
       fetchData(activeTab);
       fetchStats();
+      loadRelations();
     } catch (err) {
       setFormError(formatError(err));
     }
@@ -508,7 +557,14 @@ const AdminDashboard = () => {
             <div className="flex items-center gap-2 mt-4 ml-1">
                <input type="checkbox" id="is_active" name="is_active" checked={!!formData.is_active} onChange={e => setFormData(f => ({ ...f, is_active: e.target.checked }))} className="w-4 h-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500" />
                <label htmlFor="is_active" className="text-sm font-semibold text-slate-700 dark:text-slate-300">Set as Active Semester</label>
-            </div>
+             </div>
+          </>
+        );
+      case 'departments':
+        return (
+          <>
+            <Inp label="Department Code" name="code" value={formData.code||''} onChange={change} />
+            <Inp label="Department Name" name="name" value={formData.name||''} onChange={change} />
           </>
         );
       default:
@@ -518,17 +574,56 @@ const AdminDashboard = () => {
 
   const TAB_COLORS = {
     students: 'bg-indigo-500', professors: 'bg-violet-500',
-    courses: 'bg-sky-500', assignments: 'bg-amber-500', enrollments: 'bg-emerald-500', semesters: 'bg-rose-500'
+    courses: 'bg-sky-500', assignments: 'bg-amber-500', enrollments: 'bg-emerald-500', semesters: 'bg-rose-500',
+    departments: 'bg-teal-500'
   };
 
-  // Build breadcrumb crumbs from active tab
+  // Build breadcrumb from active tab
   const breadcrumbs = [
-    { label: 'Dashboard' },
-    { label: TABS.find(t => t.key === activeTab)?.label ?? activeTab },
+    { label: t('breadcrumbDashboard') },
+    { label: t(TABS.find(tb => tb.key === activeTab)?.labelKey ?? activeTab) },
   ];
 
   const clearFilters = () => setFilterState({ department: null, studyYear: null, professor: null, major: null });
   const hasActiveFilters = Object.values(filterState).some(Boolean);
+
+  const handleAddMajor = async (e) => {
+    e.preventDefault();
+    if (!newMajorName.trim() || !selectedDept) return;
+    setMajorActionLoading(true);
+    try {
+      await api.post('admin/majors/', {
+        name: newMajorName.trim(),
+        department: selectedDept
+      });
+      setNewMajorName('');
+      loadRelations();
+      fetchData('departments');
+      alert('Major added successfully!');
+    } catch (err) {
+      alert(`Error adding major: ${formatError(err)}`);
+    } finally {
+      setMajorActionLoading(false);
+    }
+  };
+
+  const handleDeleteMajor = async () => {
+    if (!selectedMajor) return;
+    const majorName = allMajors.find(m => m.id === selectedMajor)?.name;
+    if (!window.confirm(`Delete major "${majorName}"? This will affect students assigned to it.`)) return;
+    setMajorActionLoading(true);
+    try {
+      await api.delete(`admin/majors/${selectedMajor}/`);
+      setSelectedMajor(null);
+      loadRelations();
+      fetchData('departments');
+      alert('Major deleted successfully!');
+    } catch (err) {
+      alert(`Error deleting major: ${formatError(err)}`);
+    } finally {
+      setMajorActionLoading(false);
+    }
+  };
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
@@ -540,10 +635,10 @@ const AdminDashboard = () => {
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6 bg-white dark:bg-slate-900/80 p-6 rounded-2xl shadow-[0_8px_30px_rgba(0,0,0,0.04)] dark:shadow-none border border-gray-100 dark:border-slate-800/60">
         <div>
           <h1 className="text-2xl font-extrabold text-slate-800 dark:text-slate-100 tracking-tight">
-            Admin Dashboard
+            {t('adminDashboard')}
           </h1>
           <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-            Manage users, courses, assignments, and enrollments.
+            {t('adminDesc')}
           </p>
         </div>
 
@@ -556,7 +651,7 @@ const AdminDashboard = () => {
             <input
               type="text"
               className="input pl-10 mb-0 shadow-sm border-gray-200 dark:border-slate-700 focus:ring-[#D4AF37]/20 bg-gray-50 dark:bg-slate-800/80"
-              placeholder={`Search ${activeTab}...`}
+              placeholder={`${t('search')} ${t(TABS.find(tb => tb.key === activeTab)?.labelKey ?? activeTab)}...`}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
@@ -568,9 +663,6 @@ const AdminDashboard = () => {
         </div>
       </div>
 
-      {/* ── Today at a Glance ── */}
-      <TodayAtAGlance />
-
       {/* ── Stats Bar ── */}
       <StatsBar counts={counts} loading={statsLoading} />
 
@@ -581,14 +673,14 @@ const AdminDashboard = () => {
           className="flex items-center gap-2 text-xs font-semibold text-slate-400 dark:text-slate-500 hover:text-[#D4AF37] transition-colors mb-2"
         >
           <ChevronDown size={13} className={`transition-transform duration-200 ${showHeatmap ? 'rotate-180' : ''}`} />
-          {showHeatmap ? 'Hide' : 'Show'} Attendance Heatmap
+          {showHeatmap ? t('hideHeatmap') : t('showHeatmap')}
         </button>
         {showHeatmap && <AttendanceHeatmap />}
       </div>
 
       {/* ── Tabs ── */}
       <div className="flex gap-2 flex-wrap mb-6">
-        {TABS.map(({ key, label, icon: Icon }) => (
+        {TABS.map(({ key, labelKey, icon: Icon }) => (
           <button
             key={key}
             onClick={() => setActiveTab(key)}
@@ -600,13 +692,13 @@ const AdminDashboard = () => {
                 : 'bg-white dark:bg-slate-800 border-gray-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:border-gray-300 dark:hover:border-slate-600'}
             `}
           >
-            <Icon size={15} /> {label}
+            <Icon size={15} /> {t(labelKey)}
           </button>
         ))}
       </div>
 
       {/* ── Cascade Filters ── */}
-      {['courses', 'professors', 'students'].includes(activeTab) && (
+      {['courses', 'professors', 'students', 'departments'].includes(activeTab) && (
         <CascadeFilterBar
           activeTab={activeTab}
           departments={allDepartments}
@@ -621,83 +713,215 @@ const AdminDashboard = () => {
         />
       )}
 
-      {/* ── Two-column layout: main table | anomalies sidebar ── */}
-      <div className="flex flex-col xl:flex-row gap-6">
-        {/* Main content card */}
-        <div className="float-card p-5 flex-1 min-w-0">
-        {/* Card header */}
-        <div className="flex justify-between items-center mb-5 flex-wrap gap-3">
-          <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-            {TABS.find(t => t.key === activeTab)?.label}
-          </h2>
-          <div className="flex gap-2">
-            <button
-              onClick={() => fetchData(activeTab)}
-              className="btn-ghost"
-            >
-              <RefreshCw size={15} /> Refresh
-            </button>
-            {activeTab === 'assignments' ? (
+      {/* ── Main content card ── */}
+      {activeTab !== 'departments' ? (
+        <div className="float-card p-5 min-w-0">
+          {/* Card header */}
+          <div className="flex justify-between items-center mb-5 flex-wrap gap-3">
+            <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+              {t(TABS.find(tb => tb.key === activeTab)?.labelKey ?? activeTab)}
+            </h2>
+            <div className="flex gap-2">
               <button
-                onClick={() => { loadRelations(); setShowNestedModal(true); }}
-                className="btn-primary"
+                onClick={() => fetchData(activeTab)}
+                className="btn-ghost"
               >
-                <UserPlus size={15} /> Smart Assign
+                <RefreshCw size={15} /> {t('refresh2')}
               </button>
-            ) : activeTab !== 'assignments' && (
-              <button
-                onClick={() => { setFormData({}); setFormError(null); loadRelations(); setShowModal(true); }}
-                className="btn-primary"
-              >
-                <UserPlus size={15} /> Add New
-              </button>
+              {activeTab === 'assignments' ? (
+                <button
+                  onClick={() => { loadRelations(); setShowNestedModal(true); }}
+                  className="btn-primary"
+                >
+                  <UserPlus size={15} /> {t('smartAssign')}
+                </button>
+              ) : activeTab !== 'assignments' && (
+                <button
+                  onClick={() => { setFormData({}); setFormError(null); loadRelations(); setShowModal(true); }}
+                  className="btn-primary"
+                >
+                  <UserPlus size={15} /> {t('addNew')}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Table */}
+          <DataTable
+            tableId={`admin-${activeTab}`}
+            columns={columns[activeTab]}
+            data={data[activeTab]}
+            loading={loading}
+            onDelete={handleDelete}
+            actions={renderTableActions}
+            emptyText={`${t('noData')}`}
+            onClearFilters={hasActiveFilters ? clearFilters : undefined}
+          />
+
+          {/* Pagination controls — students only */}
+          {activeTab === 'students' && pageCount > 1 && (
+            <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {t('showingPage')} <strong>{page}</strong> {t('of')} <strong>{pageCount}</strong>
+                &nbsp;·&nbsp; {totalCount} {t('studentsTotal')}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setPage(p => Math.max(1, p - 1))}
+                  disabled={page <= 1 || loading}
+                  className="btn-ghost text-xs disabled:opacity-40"
+                >
+                  {t('pagePrev')}
+                </button>
+                <button
+                  onClick={() => setPage(p => Math.min(pageCount, p + 1))}
+                  disabled={page >= pageCount || loading}
+                  className="btn-ghost text-xs disabled:opacity-40"
+                >
+                  {t('pageNext')}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Custom Departments & Majors Split Layout */
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Departments Table (Left Column) */}
+          <div className="lg:col-span-2 float-card p-5 min-w-0">
+            <div className="flex justify-between items-center mb-5 flex-wrap gap-3">
+              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                {t('colDepartment')}
+              </h2>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => fetchData('departments')}
+                  className="btn-ghost"
+                >
+                  <RefreshCw size={15} /> {t('refresh2')}
+                </button>
+                <button
+                  onClick={() => { setFormData({}); setFormError(null); loadRelations(); setShowModal(true); }}
+                  className="btn-primary"
+                >
+                  <UserPlus size={15} /> {t('addDepartment')}
+                </button>
+              </div>
+            </div>
+
+            <DataTable
+              tableId="admin-departments"
+              columns={columns.departments}
+              data={data.departments}
+              loading={loading}
+              onDelete={handleDelete}
+              emptyText={t('noData')}
+              onClearFilters={hasActiveFilters ? clearFilters : undefined}
+            />
+          </div>
+
+          {/* Majors Step-by-Step Manager (Right Column) */}
+          <div className="float-card p-5 flex flex-col min-w-0">
+            <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-2">
+              {t('majorsManager')}
+            </h2>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mb-5">
+              {t('majorsDesc')}
+            </p>
+
+            {/* Dropdown 1: Department select */}
+            <div className="mb-4">
+              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+                {t('selectDept')}
+              </label>
+              <Select
+                isClearable
+                placeholder="Choose department..."
+                options={allDepartments.map(d => ({ value: d.id, label: `${d.name} (${d.code})` }))}
+                value={selectedDept ? { value: selectedDept, label: allDepartments.find(d => d.id === selectedDept)?.name } : null}
+                onChange={val => {
+                  setSelectedDept(val ? val.value : null);
+                  setSelectedMajor(null);
+                }}
+                styles={{ menuPortal: base => ({ ...base, zIndex: 9999 }) }}
+                menuPortalTarget={document.body}
+              />
+            </div>
+
+            {/* Dropdown 2: Major select */}
+            <div className="mb-6">
+              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+                2. Select Major
+              </label>
+              <Select
+                isClearable
+                placeholder={selectedDept ? "Choose major..." : "Select department first"}
+                options={selectedDept ? allMajors.filter(m => m.department === selectedDept).map(m => ({ value: m.id, label: m.name })) : []}
+                value={selectedMajor ? { value: selectedMajor, label: allMajors.find(m => m.id === selectedMajor)?.name } : null}
+                onChange={val => setSelectedMajor(val ? val.value : null)}
+                isDisabled={!selectedDept}
+                styles={{ menuPortal: base => ({ ...base, zIndex: 9999 }) }}
+                menuPortalTarget={document.body}
+              />
+            </div>
+
+            {/* Action Card: If Major is selected */}
+            {selectedMajor && (
+              <div className="p-4 rounded-2xl bg-red-50/50 dark:bg-red-500/5 border border-red-200/50 dark:border-red-500/25 mb-6 animate-scale-in">
+                <p className="text-[10px] font-bold text-red-500 uppercase tracking-wider mb-1">
+                  Selected Major Action
+                </p>
+                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3 truncate">
+                  {allMajors.find(m => m.id === selectedMajor)?.name}
+                </h3>
+                <button
+                  type="button"
+                  onClick={handleDeleteMajor}
+                  disabled={majorActionLoading}
+                  className="btn-danger w-full justify-center py-2 text-xs font-semibold"
+                >
+                  {majorActionLoading ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                  Delete Major
+                </button>
+              </div>
+            )}
+
+            {/* Action Form: Add Major (available when department is selected) */}
+            {selectedDept ? (
+              <form onSubmit={handleAddMajor} className="mt-auto pt-5 border-t border-slate-100 dark:border-slate-800">
+                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
+                  Add Major to Selected Department
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    className="input mb-0 text-sm flex-1 bg-gray-50 dark:bg-slate-800/80"
+                    placeholder="Enter major name..."
+                    value={newMajorName}
+                    onChange={e => setNewMajorName(e.target.value)}
+                    required
+                    disabled={majorActionLoading}
+                  />
+                  <button
+                    type="submit"
+                    disabled={majorActionLoading || !newMajorName.trim()}
+                    className="btn-primary px-3 shrink-0"
+                  >
+                    {majorActionLoading ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
+                    Add
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="mt-auto pt-5 border-t border-slate-100 dark:border-slate-800 text-center">
+                <p className="text-xs text-slate-400 dark:text-slate-500">
+                  Select a department above to add majors.
+                </p>
+              </div>
             )}
           </div>
         </div>
-
-        {/* Table */}
-        <DataTable
-          columns={COLUMNS[activeTab]}
-          data={data[activeTab]}
-          loading={loading}
-          onDelete={handleDelete}
-          actions={renderTableActions}
-          emptyText={`No ${activeTab} found.`}
-          onClearFilters={hasActiveFilters ? clearFilters : undefined}
-        />
-
-        {/* Pagination controls — students only */}
-        {activeTab === 'students' && pageCount > 1 && (
-          <div className="flex items-center justify-between mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
-            <p className="text-xs text-slate-500 dark:text-slate-400">
-              Showing page <strong>{page}</strong> of <strong>{pageCount}</strong>
-              &nbsp;·&nbsp; {totalCount} students total
-            </p>
-            <div className="flex gap-2">
-              <button
-                onClick={() => setPage(p => Math.max(1, p - 1))}
-                disabled={page <= 1 || loading}
-                className="btn-ghost text-xs disabled:opacity-40"
-              >
-                ← Previous
-              </button>
-              <button
-                onClick={() => setPage(p => Math.min(pageCount, p + 1))}
-                disabled={page >= pageCount || loading}
-                className="btn-ghost text-xs disabled:opacity-40"
-              >
-                Next →
-              </button>
-            </div>
-          </div>
-        )}
-        </div>{/* end main float-card */}
-
-        {/* Anomalies sidebar panel */}
-        <div className="xl:w-80 shrink-0">
-          <AnomaliesPanel />
-        </div>
-      </div>{/* end two-column */}
+      )}
 
       {/* ── Generic Add Modal ── */}
       <Dialog open={showModal} onClose={() => setShowModal(false)} className="relative z-50">
@@ -706,7 +930,7 @@ const AdminDashboard = () => {
           <Dialog.Panel className="card w-full max-w-md p-6 animate-scale-in dark:bg-slate-900 border border-slate-200 dark:border-slate-700">
             <div className="flex items-center justify-between mb-5">
               <Dialog.Title className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                Add {TABS.find(t => t.key === activeTab)?.label.slice(0, -1)}
+                {t('addNew')}
               </Dialog.Title>
               <button onClick={() => setShowModal(false)} className="btn-ghost p-1.5">
                 <X size={18} />

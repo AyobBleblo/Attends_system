@@ -1,5 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Trash2, Download, UserCog, Search, CheckSquare, Square } from 'lucide-react';
+import { useLanguage } from '../../context/LanguageContext';
 
 /* ── Avatar helpers ───────────────────────────────────────────────────── */
 
@@ -13,7 +14,7 @@ export const nameToColor = (name = '') => {
   return `hsl(${h}, 55%, 48%)`;
 };
 
-const initials = (name = '') =>
+export const initials = (name = '') =>
   name
     .split(' ')
     .slice(0, 2)
@@ -34,11 +35,10 @@ const AvatarCell = ({ name }) => (
 );
 
 /* ── Empty state ─────────────────────────────────────────────────────── */
-const EmptyState = ({ text, onClearFilters }) => (
+const EmptyState = ({ text, onClearFilters, t }) => (
   <tr>
     <td colSpan={99} className="px-4 py-14">
       <div className="flex flex-col items-center gap-4 text-center">
-        {/* Inline SVG illustration */}
         <svg
           width="80"
           height="64"
@@ -58,7 +58,7 @@ const EmptyState = ({ text, onClearFilters }) => (
         <div>
           <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">{text}</p>
           <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
-            Try adjusting your search or filters.
+            {t('tryAdjusting')}
           </p>
         </div>
 
@@ -69,7 +69,7 @@ const EmptyState = ({ text, onClearFilters }) => (
                        bg-[#D4AF37]/10 border border-[#D4AF37]/30 text-[#92700d] dark:text-[#D4AF37]
                        hover:bg-[#D4AF37]/20 transition-colors"
           >
-            <Search size={11} /> Clear filters
+            <Search size={11} /> {t('clearFilters')}
           </button>
         )}
       </div>
@@ -78,7 +78,7 @@ const EmptyState = ({ text, onClearFilters }) => (
 );
 
 /* ── Bulk Action Toolbar ─────────────────────────────────────────────── */
-const BulkToolbar = ({ count, onDelete, onExport, onClear }) => (
+const BulkToolbar = ({ count, onDelete, onExport, onClear, t }) => (
   <div
     className={`
       fixed bottom-6 left-1/2 -translate-x-1/2 z-40
@@ -90,26 +90,26 @@ const BulkToolbar = ({ count, onDelete, onExport, onClear }) => (
     `}
   >
     <span className="text-xs font-bold text-[#D4AF37] whitespace-nowrap">
-      {count} selected
+      {t('selected', count)}
     </span>
     <div className="h-4 w-px bg-slate-600" />
     <button
       onClick={onExport}
       className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-200 hover:text-white px-3 py-1.5 rounded-lg hover:bg-slate-700 transition-colors"
     >
-      <Download size={13} /> Export
+      <Download size={13} /> {t('export')}
     </button>
     <button
       onClick={() => alert('Bulk Assign coming soon')}
       className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-200 hover:text-white px-3 py-1.5 rounded-lg hover:bg-slate-700 transition-colors"
     >
-      <UserCog size={13} /> Assign
+      <UserCog size={13} /> {t('assign')}
     </button>
     <button
       onClick={onDelete}
       className="inline-flex items-center gap-1.5 text-xs font-semibold text-red-400 hover:text-red-300 px-3 py-1.5 rounded-lg hover:bg-red-500/20 transition-colors"
     >
-      <Trash2 size={13} /> Delete
+      <Trash2 size={13} /> {t('delete')}
     </button>
     <div className="h-4 w-px bg-slate-600" />
     <button
@@ -142,6 +142,7 @@ const SKELETON_ROWS = 5;
  *   showAvatarFor : string[]   — column keys where avatar should be used (default: ['name'])
  */
 const DataTable = ({
+  tableId,
   columns = [],
   data = [],
   loading = false,
@@ -151,8 +152,62 @@ const DataTable = ({
   onClearFilters,
   showAvatarFor = ['name'],
 }) => {
+  const { t } = useLanguage();
   const [selected, setSelected] = useState(new Set());
 
+  // ── Drag and Drop Column Reordering ──
+  const [draggedCol, setDraggedCol] = useState(null);
+  const [columnOrder, setColumnOrder] = useState([]);
+
+  useEffect(() => {
+    setColumnOrder(prev => {
+      const newKeys = columns.map(c => c.key);
+      const savedOrder = tableId ? JSON.parse(localStorage.getItem(`table-cols-${tableId}`) || 'null') : null;
+      let baseOrder = prev.length > 0 ? prev : (savedOrder || newKeys);
+      
+      const existing = baseOrder.filter(k => newKeys.includes(k));
+      const added = newKeys.filter(k => !existing.includes(k));
+      return [...existing, ...added];
+    });
+  }, [columns, tableId]);
+
+  useEffect(() => {
+    if (tableId && columnOrder.length > 0 && columnOrder.length === columns.length) {
+      localStorage.setItem(`table-cols-${tableId}`, JSON.stringify(columnOrder));
+    }
+  }, [columnOrder, tableId, columns.length]);
+
+  const handleDragStart = (e, colKey) => {
+    setDraggedCol(colKey);
+    e.dataTransfer.effectAllowed = 'move';
+    setTimeout(() => { e.target.style.opacity = '0.5'; }, 0);
+  };
+
+  const handleDragEnd = (e) => {
+    e.target.style.opacity = '1';
+    setDraggedCol(null);
+  };
+
+  const handleDragOver = (e, colKey) => {
+    e.preventDefault();
+    if (!draggedCol || draggedCol === colKey) return;
+    
+    setColumnOrder(prev => {
+      const newOrder = [...prev];
+      const fromIdx = newOrder.indexOf(draggedCol);
+      const toIdx = newOrder.indexOf(colKey);
+      if (fromIdx === -1 || toIdx === -1) return prev;
+      newOrder.splice(fromIdx, 1);
+      newOrder.splice(toIdx, 0, draggedCol);
+      return newOrder;
+    });
+  };
+
+  const activeCols = columnOrder.length === columns.length 
+    ? columnOrder.map(key => columns.find(c => c.key === key)).filter(Boolean)
+    : columns;
+
+  // ── Selection Logic ──
   const allSelected = data.length > 0 && selected.size === data.length;
   const someSelected = selected.size > 0 && !allSelected;
 
@@ -173,7 +228,7 @@ const DataTable = ({
   };
 
   const handleBulkDelete = () => {
-    if (!window.confirm(`Delete ${selected.size} record(s)?`)) return;
+    if (!window.confirm(t('deleteRecord'))) return;
     // Call onDelete for each selected id
     if (onDelete) {
       [...selected].forEach(id => onDelete(id));
@@ -184,9 +239,9 @@ const DataTable = ({
   const handleBulkExport = () => {
     const rows = data.filter(r => selected.has(r.id));
     const csv = [
-      columns.map(c => c.label).join(','),
+      activeCols.map(c => c.label).join(','),
       ...rows.map(r =>
-        columns.map(c => {
+        activeCols.map(c => {
           const v = r[c.key] ?? '';
           return typeof v === 'string' && v.includes(',') ? `"${v}"` : v;
         }).join(',')
@@ -204,7 +259,7 @@ const DataTable = ({
   return (
     <>
       <div className="overflow-x-auto rounded-xl border border-slate-200 dark:border-slate-700/60">
-        <table className="w-full text-sm text-left">
+        <table className="w-full text-sm text-start">
           <thead>
             <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-700">
               {/* Select all */}
@@ -220,16 +275,22 @@ const DataTable = ({
                 </button>
               </th>
 
-              {columns.map(col => (
+              {activeCols.map(col => (
                 <th
                   key={col.key}
-                  className="px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap"
+                  draggable
+                  onDragStart={(e) => handleDragStart(e, col.key)}
+                  onDragEnd={handleDragEnd}
+                  onDragOver={(e) => handleDragOver(e, col.key)}
+                  className={`px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider whitespace-nowrap cursor-grab active:cursor-grabbing transition-colors duration-200 ${draggedCol === col.key ? 'bg-slate-200 dark:bg-slate-700' : ''}`}
                 >
-                  {col.label}
+                  <div className="flex items-center gap-1.5">
+                    {col.label}
+                  </div>
                 </th>
               ))}
-              <th className="px-4 py-3 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                Actions
+              <th className="px-4 py-3 text-end text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                {t('colActions')}
               </th>
             </tr>
           </thead>
@@ -241,7 +302,7 @@ const DataTable = ({
                   <td className="pl-4 pr-2 py-3">
                     <div className="skeleton h-4 w-4 rounded" />
                   </td>
-                  {columns.map(col => (
+                  {activeCols.map(col => (
                     <td key={col.key} className="px-4 py-3">
                       <div className={`skeleton h-4 rounded ${i % 3 === 0 ? 'w-24' : i % 2 === 0 ? 'w-32' : 'w-20'}`} />
                     </td>
@@ -252,7 +313,7 @@ const DataTable = ({
                 </tr>
               ))
             ) : data.length === 0 ? (
-              <EmptyState text={emptyText} onClearFilters={onClearFilters} />
+              <EmptyState text={emptyText} onClearFilters={onClearFilters} t={t} />
             ) : (
               data.map(item => {
                 const isSelected = selected.has(item.id);
@@ -278,7 +339,7 @@ const DataTable = ({
                       </button>
                     </td>
 
-                    {columns.map(col => (
+                    {activeCols.map(col => (
                       <td
                         key={col.key}
                         className="px-4 py-3 text-slate-700 dark:text-slate-300 max-w-[200px]"
@@ -323,6 +384,7 @@ const DataTable = ({
         onDelete={handleBulkDelete}
         onExport={handleBulkExport}
         onClear={() => setSelected(new Set())}
+        t={t}
       />
     </>
   );

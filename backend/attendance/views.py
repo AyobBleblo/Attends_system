@@ -449,7 +449,7 @@ class CourseAttendanceReportView(APIView):
         enrollments = (
             Enrollment.objects
             .filter(course=course, semester=semester)
-            .select_related('student', 'student__department')
+            .select_related('student', 'student__department', 'student__major')
         )
         students = [e.student for e in enrollments]
 
@@ -508,7 +508,7 @@ class CourseAttendanceReportView(APIView):
             student_rows.append({
                 'student_id':      student.student_id,
                 'student_name':    student.name,
-                'student_major':   student.student_major,
+                'student_major':   student.major.name if student.major else "",
                 'department_name': student.department.name,
                 'course_name':     course.name,
                 'course_code':     course.code,

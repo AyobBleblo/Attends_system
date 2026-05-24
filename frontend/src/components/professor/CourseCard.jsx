@@ -1,4 +1,5 @@
 import { ChevronRight } from 'lucide-react';
+import { useLanguage } from '../../context/LanguageContext';
 
 /**
  * CourseCard — branded professor course card with glassmorphism design.
@@ -16,6 +17,7 @@ const ACCENT_COLORS = [
 ];
 
 const CourseCard = ({ course, onClick, index = 0 }) => {
+  const { lang } = useLanguage();
   const colors = ACCENT_COLORS[index % ACCENT_COLORS.length];
 
   return (
@@ -40,7 +42,7 @@ const CourseCard = ({ course, onClick, index = 0 }) => {
         </h3>
         <ChevronRight
           size={18}
-          className="shrink-0 text-slate-400 group-hover:text-brand-500 group-hover:translate-x-0.5 transition-all"
+          className={`shrink-0 text-slate-400 group-hover:text-brand-500 transition-all ${lang === 'ar' ? 'group-hover:-translate-x-0.5 rotate-180' : 'group-hover:translate-x-0.5'}`}
         />
       </div>
 
@@ -49,8 +51,8 @@ const CourseCard = ({ course, onClick, index = 0 }) => {
 
       {/* Footer CTA */}
       <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-700">
-        <span className={`text-xs font-semibold ${colors.bg.replace('bg-', 'text-')}`}>
-          Start Session →
+        <span className={`text-xs font-semibold flex items-center gap-1 ${colors.bg.replace('bg-', 'text-')}`}>
+          {lang === 'ar' ? 'بدء الجلسة ←' : 'Start Session →'}
         </span>
       </div>
     </button>

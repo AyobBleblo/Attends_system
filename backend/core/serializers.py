@@ -2,16 +2,20 @@ from rest_framework import serializers
 from .models import Department, Semester, StudyYear, Major
 
 
-class DepartmentSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Department
-        fields = ['id', 'name', 'code']
-
-
 class MajorSerializer(serializers.ModelSerializer):
+    department_name = serializers.CharField(source='department.name', read_only=True)
+
     class Meta:
         model = Major
-        fields = ['id', 'name', 'department']
+        fields = ['id', 'name', 'department', 'department_name']
+
+
+class DepartmentSerializer(serializers.ModelSerializer):
+    majors = MajorSerializer(many=True, read_only=True)
+
+    class Meta:
+        model = Department
+        fields = ['id', 'name', 'code', 'majors']
 
 
 class StudyYearSerializer(serializers.ModelSerializer):

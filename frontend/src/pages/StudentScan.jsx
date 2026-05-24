@@ -4,6 +4,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import FingerprintJS from '@fingerprintjs/fingerprintjs';
 import api from '../api/axios';
 import { useAuth } from '../context/AuthContext';
+import { useLanguage } from '../context/LanguageContext';
 import {
   BookOpen, Loader2, RefreshCw, KeyRound, X,
   CheckCircle, XCircle, ShieldAlert, Smartphone,
@@ -12,7 +13,7 @@ import EnrolledCourseCard from '../components/student/EnrolledCourseCard';
 import QrScannerModal   from '../components/common/QrScannerModal';
 import SkeletonCard      from '../components/common/SkeletonCard';
 
-// ── Gold accent design tokens (Anti-Gravity) ──────────────────────────────────
+// ── Gold design tokens ────────────────────────────────────────────────────────
 const G = {
   gold:       '#D4AF37',
   goldDim:    'rgba(212,175,55,0.15)',
@@ -25,11 +26,7 @@ const G = {
 };
 
 // ── Anti-Gravity Device-Mismatch Modal ────────────────────────────────────────
-/**
- * Shown when the backend returns HTTP 403 with { device_mismatch: true }.
- * Glassmorphism panel on a full-screen black overlay.
- */
-const DeviceMismatchModal = ({ onClose }) => (
+const DeviceMismatchModal = ({ onClose, t }) => (
   <div
     style={{
       position: 'fixed', inset: 0, zIndex: 60,
@@ -80,46 +77,35 @@ const DeviceMismatchModal = ({ onClose }) => (
         <ShieldAlert size={34} color={G.gold} />
       </div>
 
-      {/* Heading */}
       <h2 style={{
         margin: '0 0 0.5rem',
         fontSize: '1.35rem', fontWeight: 800,
         color: G.gold,
-        fontFamily: 'Inter, sans-serif',
       }}>
-        Device Not Recognised
+        {t('deviceNotRecognised')}
       </h2>
-      <p style={{ margin: '0 0 0.35rem', fontSize: '0.82rem', color: G.muted, fontFamily: 'Inter, sans-serif' }}>
-        جهازك غير مسجّل لهذا الحساب
-      </p>
 
-      {/* Body */}
       <p style={{
         margin: '1rem 0 1.5rem',
         fontSize: '0.9rem', lineHeight: 1.65,
-        color: G.text, fontFamily: 'Inter, sans-serif',
+        color: G.text,
       }}>
-        Your attendance was <strong style={{ color: '#ef4444' }}>refused</strong> because
-        this QR scan was submitted from an <strong style={{ color: G.gold }}>unrecognised device</strong>.
+        {t('deviceBody')}
       </p>
 
-      {/* What to do */}
+      {/* Instructions box */}
       <div style={{
         background: G.goldDim, border: `1px solid ${G.goldBorder}`,
         borderRadius: 12, padding: '1rem 1.2rem',
-        textAlign: 'left', marginBottom: '1.5rem',
+        textAlign: 'start', marginBottom: '1.5rem',
       }}>
-        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start', marginBottom: '0.6rem' }}>
+        <div style={{ display: 'flex', gap: '0.6rem', alignItems: 'flex-start' }}>
           <Smartphone size={16} color={G.gold} style={{ marginTop: 2, flexShrink: 0 }} />
-          <p style={{ margin: 0, fontSize: '0.82rem', color: G.text, fontFamily: 'Inter, sans-serif', lineHeight: 1.55 }}>
-            <strong style={{ color: G.gold }}>What to do:</strong> Contact your professor or the admin
-            and ask them to <em>Reset your Device Fingerprint</em>. Once reset, you can scan
-            from this new device.
+          <p style={{ margin: 0, fontSize: '0.82rem', color: G.text, lineHeight: 1.55 }}>
+            <strong style={{ color: G.gold }}>{t('whatToDo')}</strong>{' '}
+            {t('deviceInstructions')}
           </p>
         </div>
-        <p style={{ margin: 0, fontSize: '0.78rem', color: G.muted, paddingLeft: '1.6rem', fontFamily: 'Inter, sans-serif' }}>
-          اتصل بأستاذك أو المشرف لإعادة تعيين بصمة جهازك.
-        </p>
       </div>
 
       <button
@@ -128,20 +114,20 @@ const DeviceMismatchModal = ({ onClose }) => (
           width: '100%', padding: '0.75rem',
           background: G.goldDim, border: `1px solid ${G.goldBorder}`,
           borderRadius: 12, color: G.gold, fontWeight: 700,
-          fontSize: '0.9rem', cursor: 'pointer', fontFamily: 'Inter, sans-serif',
+          fontSize: '0.9rem', cursor: 'pointer',
           transition: 'background 0.2s',
         }}
         onMouseEnter={e => e.currentTarget.style.background = 'rgba(212,175,55,0.25)'}
         onMouseLeave={e => e.currentTarget.style.background = G.goldDim}
       >
-        Understood
+        {t('understood')}
       </button>
     </motion.div>
   </div>
 );
 
-// ── Full-screen scan result overlay (success / fail) ──────────────────────────
-const ScanResult = ({ result, onClose }) => {
+// ── Full-screen scan result overlay ──────────────────────────────────────────
+const ScanResult = ({ result, onClose, t }) => {
   if (!result) return null;
   const ok = result.type === 'success';
   return (
@@ -153,19 +139,19 @@ const ScanResult = ({ result, onClose }) => {
           <XCircle size={80} className="text-red-400 animate-shake" />
         )}
         <p className={`text-2xl font-bold ${ok ? 'text-emerald-300' : 'text-red-300'}`}>
-          {ok ? 'Attendance Recorded!' : 'Scan Failed'}
+          {ok ? t('attendanceRecorded') : t('scanFailed')}
         </p>
         <p className="text-white/70 text-sm max-w-xs">{result.message}</p>
         <button onClick={onClose} className="mt-4 btn-primary bg-white/10 hover:bg-white/20 border border-white/20">
-          <X size={16} /> Close
+          <X size={16} /> {t('close')}
         </button>
       </div>
     </div>
   );
 };
 
-// ── Manual token entry modal (fallback when camera is unavailable) ─────────────
-const ManualModal = ({ course, studentId, deviceId, onClose, onResult }) => {
+// ── Manual token entry modal ──────────────────────────────────────────────────
+const ManualModal = ({ course, studentId, deviceId, onClose, onResult, t }) => {
   const [token,   setToken]   = useState('');
   const [loading, setLoading] = useState(false);
 
@@ -177,12 +163,12 @@ const ManualModal = ({ course, studentId, deviceId, onClose, onResult }) => {
       const payload = { student_id: studentId, qr_token: token.trim() };
       if (deviceId) payload.device_id = deviceId;
       const res = await api.post('/attendance/scan/', payload);
-      onResult({ type: 'success', message: res.data.message || 'Attendance recorded!' });
+      onResult({ type: 'success', message: res.data.message || t('attendanceRecorded') });
     } catch (err) {
       if (err.response?.status === 403 && err.response?.data?.device_mismatch) {
         onResult({ type: 'device_mismatch' });
       } else {
-        onResult({ type: 'error', message: err.response?.data?.error || 'Failed to record attendance.' });
+        onResult({ type: 'error', message: err.response?.data?.error || t('scanFailed') });
       }
     } finally {
       setLoading(false);
@@ -195,7 +181,7 @@ const ManualModal = ({ course, studentId, deviceId, onClose, onResult }) => {
       <div className="card w-full max-w-md p-6 animate-slide-down dark:bg-slate-900">
         <div className="flex items-center justify-between mb-5">
           <div>
-            <h3 className="font-bold text-slate-800 dark:text-slate-100">Enter QR Token</h3>
+            <h3 className="font-bold text-slate-800 dark:text-slate-100">{t('enterQrToken')}</h3>
             <p className="text-xs text-slate-500 mt-0.5">
               {course?.code} — {course?.name}
             </p>
@@ -204,10 +190,10 @@ const ManualModal = ({ course, studentId, deviceId, onClose, onResult }) => {
         </div>
         <form onSubmit={submit} className="space-y-4">
           <div>
-            <label className="form-label">QR Token Code</label>
+            <label className="form-label">{t('qrTokenCode')}</label>
             <input
               className="input font-mono"
-              placeholder="Paste or type the token…"
+              placeholder={t('pasteToken')}
               value={token}
               onChange={e => setToken(e.target.value)}
               autoFocus
@@ -216,7 +202,7 @@ const ManualModal = ({ course, studentId, deviceId, onClose, onResult }) => {
           </div>
           <button type="submit" disabled={loading} className="btn-primary w-full justify-center">
             {loading ? <Loader2 size={16} className="animate-spin" /> : <KeyRound size={16} />}
-            {loading ? 'Submitting…' : 'Submit Attendance'}
+            {loading ? t('submitting') : t('submitAtt')}
           </button>
         </form>
       </div>
@@ -227,6 +213,7 @@ const ManualModal = ({ course, studentId, deviceId, onClose, onResult }) => {
 // ── Main page ─────────────────────────────────────────────────────────────────
 function StudentScan() {
   const { user }   = useAuth();
+  const { t }      = useLanguage();
   const navigate   = useNavigate();
 
   const [courses,      setCourses]      = useState([]);
@@ -236,11 +223,10 @@ function StudentScan() {
   const [selectedCourse, setSelectedCourse] = useState(null);
   const [showScanner,    setShowScanner]    = useState(false);
   const [showManual,     setShowManual]     = useState(false);
-  const [scanResult,     setScanResult]     = useState(null);   // { type, message }
+  const [scanResult,     setScanResult]     = useState(null);
   const [submitting,     setSubmitting]     = useState(false);
-  const [showMismatch,   setShowMismatch]   = useState(false);  // Anti-Gravity 403 modal
+  const [showMismatch,   setShowMismatch]   = useState(false);
 
-  // ── Fingerprint initialisation ─────────────────────────────────────────────
   const deviceIdRef = useRef(null);
 
   useEffect(() => {
@@ -250,14 +236,12 @@ function StudentScan() {
       .catch(err => console.warn('FingerprintJS failed to load:', err));
   }, []);
 
-  // ── Guard ──────────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!user)                    { navigate('/login');     return; }
     if (user.role !== 'student')  { navigate('/professor'); return; }
     fetchCourses();
   }, [user]);
 
-  // ── Fetch enrolled courses ─────────────────────────────────────────────────
   const fetchCourses = async () => {
     setLoading(true);
     try {
@@ -276,30 +260,24 @@ function StudentScan() {
     }
   };
 
-  // ── Called by QrScannerModal the instant a QR code is decoded ─────────────
   const handleScanned = useCallback(async (decodedToken) => {
     setShowScanner(false);
     setSubmitting(true);
     setScanResult(null);
     try {
-      const payload = {
-        student_id: user.student_id,
-        qr_token:   decodedToken,
-      };
-      // Attach device fingerprint if available
+      const payload = { student_id: user.student_id, qr_token: decodedToken };
       if (deviceIdRef.current) payload.device_id = deviceIdRef.current;
 
       const res = await api.post('/attendance/scan/', payload);
-      setScanResult({ type: 'success', message: res.data.message || 'Attendance recorded!' });
+      setScanResult({ type: 'success', message: res.data.message || t('attendanceRecorded') });
       fetchCourses();
     } catch (err) {
       if (err.response?.status === 403 && err.response?.data?.device_mismatch) {
-        // Show the dedicated Anti-Gravity device-mismatch modal
         setShowMismatch(true);
       } else {
         setScanResult({
           type:    'error',
-          message: err.response?.data?.error || 'Failed to record attendance.',
+          message: err.response?.data?.error || t('scanFailed'),
         });
       }
     } finally {
@@ -312,10 +290,9 @@ function StudentScan() {
     setShowScanner(true);
   };
 
-  const handleScannerClose    = () => setShowScanner(false);
-  const handleManualFallback  = () => { setShowScanner(false); setShowManual(true); };
+  const handleScannerClose   = () => setShowScanner(false);
+  const handleManualFallback = () => { setShowScanner(false); setShowManual(true); };
 
-  // Manual modal result handler
   const handleManualResult = (r) => {
     if (r.type === 'device_mismatch') {
       setShowMismatch(true);
@@ -330,22 +307,23 @@ function StudentScan() {
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 pb-[calc(2rem+env(safe-area-inset-bottom))]">
 
-      {/* ── Anti-Gravity Device Mismatch Modal ────────────────────────────── */}
+      {/* Device Mismatch Modal */}
       <AnimatePresence>
         {showMismatch && (
-          <DeviceMismatchModal onClose={() => setShowMismatch(false)} />
+          <DeviceMismatchModal onClose={() => setShowMismatch(false)} t={t} />
         )}
       </AnimatePresence>
 
-      {/* ── Scan result overlay ───────────────────────────────────────────── */}
+      {/* Scan result overlay */}
       {scanResult && (
         <ScanResult
           result={scanResult}
           onClose={() => { setScanResult(null); setSelectedCourse(null); }}
+          t={t}
         />
       )}
 
-      {/* ── Native QR scanner ─────────────────────────────────────────────── */}
+      {/* QR Scanner */}
       {showScanner && selectedCourse && (
         <QrScannerModal
           course={selectedCourse}
@@ -355,7 +333,7 @@ function StudentScan() {
         />
       )}
 
-      {/* ── Manual token entry ─────────────────────────────────────────────── */}
+      {/* Manual token entry */}
       {showManual && selectedCourse && (
         <ManualModal
           course={selectedCourse}
@@ -363,16 +341,16 @@ function StudentScan() {
           deviceId={deviceIdRef.current}
           onClose={() => { setShowManual(false); setSelectedCourse(null); }}
           onResult={handleManualResult}
+          t={t}
         />
       )}
 
-      {/* ── Student hero header ───────────────────────────────────────────── */}
+      {/* ── Student hero header ── */}
       <div className="relative mb-8 overflow-hidden rounded-3xl bg-gradient-to-br from-emerald-500 via-teal-500 to-cyan-600 p-7 text-white shadow-lg">
         <div className="absolute -top-10 -right-10 w-36 h-36 bg-white/10 rounded-full blur-2xl" />
         <div className="relative">
-          <p className="text-white/70 text-sm uppercase tracking-wide font-medium mb-1">Student Portal</p>
-          <h1 className="text-3xl font-extrabold tracking-tight">أهلاً، {user.name}</h1>
-          <p className="text-white/80 text-sm mt-1">Hello, {user.name}</p>
+          <p className="text-white/70 text-sm uppercase tracking-wide font-medium mb-1">{t('studentPortal')}</p>
+          <h1 className="text-3xl font-extrabold tracking-tight">{t('welcomeStudent')}، {user.name}</h1>
           <div className="flex flex-wrap gap-3 mt-4">
             <span className="badge bg-white/20 text-white border border-white/30 text-sm px-3 py-1">
               ID: {user.student_id}
@@ -389,18 +367,18 @@ function StudentScan() {
         </div>
       </div>
 
-      {/* ── Section title ─────────────────────────────────────────────────── */}
+      {/* ── Section title ── */}
       <div className="flex items-center justify-between mb-5">
         <div className="flex items-center gap-2">
           <BookOpen size={20} className="text-emerald-500" />
-          <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">My Enrolled Courses</h2>
+          <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">{t('myEnrolledCourses')}</h2>
         </div>
         <button onClick={fetchCourses} className="btn-ghost text-xs">
-          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> Refresh
+          <RefreshCw size={14} className={loading ? 'animate-spin' : ''} /> {t('refresh')}
         </button>
       </div>
 
-      {/* ── Course grid ───────────────────────────────────────────────────── */}
+      {/* ── Course grid ── */}
       {loading ? (
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           {[1, 2, 3].map(i => <SkeletonCard key={i} lines={5} />)}
@@ -409,15 +387,16 @@ function StudentScan() {
         <div className="card py-16 text-center">
           <BookOpen size={40} className="mx-auto text-slate-300 dark:text-slate-600 mb-3" />
           <p className="text-slate-500 dark:text-slate-400 font-medium">
-            You are not enrolled in any courses this semester.
+            {t('notEnrolled')}
           </p>
-          <p className="text-xs text-slate-400 mt-1">Contact the admin to enroll you.</p>
+          <p className="text-xs text-slate-400 mt-1">{t('contactAdminEnroll')}</p>
         </div>
       ) : (
         <>
           <div className="mb-4 p-3 bg-slate-50 dark:bg-slate-800 rounded-xl flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
-            <span className="font-semibold">{courses.length}</span> courses enrolled.
-            Tap <span className="font-semibold text-brand-500">Scan Attendance</span> on any card when your professor opens a session.
+            <span className="font-semibold">{courses.length}</span>{' '}
+            {t('coursesEnrolled', courses.length)}{' '}
+            {t('scanInfo')}
           </div>
           <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
             {courses.map(course => (
@@ -431,12 +410,12 @@ function StudentScan() {
         </>
       )}
 
-      {/* ── Submitting overlay ────────────────────────────────────────────── */}
+      {/* Submitting overlay */}
       {submitting && (
         <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 backdrop-blur-sm">
           <div className="card p-6 flex flex-col items-center gap-3">
             <Loader2 size={32} className="animate-spin text-brand-500" />
-            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">Recording attendance…</p>
+            <p className="text-sm font-medium text-slate-700 dark:text-slate-200">{t('recordingAttendance')}</p>
           </div>
         </div>
       )}

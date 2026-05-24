@@ -1,4 +1,5 @@
 from rest_framework import serializers
+from rest_framework.validators import UniqueTogetherValidator
 from django.db import transaction
 from django.contrib.auth.models import User
 from .models import Course, CourseAssignment
@@ -61,6 +62,13 @@ class CourseAssignmentSerializer(serializers.ModelSerializer):
         model = CourseAssignment
         fields = ['id', 'professor', 'professor_name', 'course', 'course_code',
                   'course_name', 'semester', 'semester_name']
+        validators = [
+            UniqueTogetherValidator(
+                queryset=CourseAssignment.objects.all(),
+                fields=['professor', 'course', 'semester'],
+                message="Oh sorry, this professor already has this course assigned for this semester!"
+            )
+        ]
 
 
 class NestedCourseAssignmentSerializer(serializers.Serializer):

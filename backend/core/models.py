@@ -107,3 +107,16 @@ class Notification(models.Model):
 
     def __str__(self):
         return f"[{self.notification_type}] {self.professor} — {self.created_at:%Y-%m-%d}"
+
+
+# ── Cache Invalidation Signals ───────────────────────────────────────────────
+from django.db.models.signals import post_save, post_delete
+from django.dispatch import receiver
+from django.core.cache import cache
+
+@receiver([post_save, post_delete], sender=Department)
+@receiver([post_save, post_delete], sender=Major)
+@receiver([post_save, post_delete], sender=StudyYear)
+@receiver([post_save, post_delete], sender=Semester)
+def clear_core_cache(sender, **kwargs):
+    cache.clear()

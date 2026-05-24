@@ -1,6 +1,7 @@
 import React from 'react';
 import Select from 'react-select';
 import { X, SlidersHorizontal } from 'lucide-react';
+import { useLanguage } from '../../context/LanguageContext';
 
 /**
  * CascadeFilterBar — filter selects + active filter chips.
@@ -18,6 +19,7 @@ const CascadeFilterBar = ({
   selectedMajor,
   onFilterChange,
 }) => {
+  const { t } = useLanguage();
 
   const handleDepartmentChange = (option) => {
     onFilterChange({
@@ -62,44 +64,42 @@ const CascadeFilterBar = ({
   const activeChips = [
     selectedDepartment && {
       key: 'department',
-      label: `Dept: ${departments?.find(d => d.id === selectedDepartment)?.name ?? '…'}`,
+      label: `${t('colDepartment')}: ${departments?.find(d => d.id === selectedDepartment)?.name ?? '…'}`,
       clear: () => onFilterChange({ department: null, studyYear: selectedStudyYear, professor: null, major: null }),
     },
     selectedStudyYear && {
       key: 'studyYear',
-      label: `Year: ${studyYears?.find(y => y.id === selectedStudyYear)?.name ?? '…'}`,
+      label: `${t('colYear')}: ${studyYears?.find(y => y.id === selectedStudyYear)?.name ?? '…'}`,
       clear: () => onFilterChange({ department: selectedDepartment, studyYear: null, professor: selectedProfessor, major: selectedMajor }),
     },
     selectedProfessor && {
       key: 'professor',
-      label: `Prof: ${professors?.find(p => p.id === selectedProfessor)?.name ?? '…'}`,
+      label: `${t('colProfessor')}: ${professors?.find(p => p.id === selectedProfessor)?.name ?? '…'}`,
       clear: () => onFilterChange({ department: selectedDepartment, studyYear: selectedStudyYear, professor: null, major: selectedMajor }),
     },
     selectedMajor && {
       key: 'major',
-      label: `Major: ${majors?.find(m => m.id === selectedMajor)?.name ?? '…'}`,
+      label: `${t('colMajor')}: ${majors?.find(m => m.id === selectedMajor)?.name ?? '…'}`,
       clear: () => onFilterChange({ department: selectedDepartment, studyYear: selectedStudyYear, professor: selectedProfessor, major: null }),
     },
   ].filter(Boolean);
 
   /* ── react-select theme-aware styles ──────────────────────────────── */
-  const isDark = document.documentElement.classList.contains('dark');
-
   const selectStyles = {
     control: (base, state) => ({
       ...base,
       minHeight: '42px',
       borderRadius: '0.625rem',
-      borderColor: state.isFocused ? '#D4AF37' : isDark ? '#334155' : '#e2e8f0',
-      backgroundColor: isDark ? 'rgba(15, 23, 42, 0.7)' : '#fff',
+      borderColor: state.isFocused ? '#D4AF37' : 'var(--rs-border)',
+      backgroundColor: 'var(--rs-bg)',
       boxShadow: state.isFocused ? '0 0 0 2px rgba(212,175,55,0.2)' : 'none',
       '&:hover': { borderColor: '#D4AF37' },
-      transition: 'border-color 0.15s, box-shadow 0.15s',
+      transition: 'border-color 0.15s, box-shadow 0.15s, background-color 0.15s',
     }),
     menu: (base) => ({
       ...base,
-      backgroundColor: isDark ? '#1e293b' : '#fff',
-      border: isDark ? '1px solid #334155' : '1px solid #e2e8f0',
+      backgroundColor: 'var(--rs-menu-bg)',
+      border: '1px solid var(--rs-border)',
       boxShadow: '0 8px 32px rgba(0,0,0,0.2)',
       borderRadius: '0.75rem',
       overflow: 'hidden',
@@ -109,28 +109,28 @@ const CascadeFilterBar = ({
       backgroundColor: isSelected
         ? 'rgba(212,175,55,0.15)'
         : isFocused
-        ? isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)'
+        ? 'var(--rs-option-hover)'
         : 'transparent',
       color: isSelected
-        ? isDark ? '#D4AF37' : '#92700d'
-        : isDark ? '#cbd5e1' : '#1e293b',
+        ? 'var(--rs-text-gold)'
+        : 'var(--rs-text)',
       fontWeight: isSelected ? 600 : 400,
       fontSize: '0.8125rem',
       cursor: 'pointer',
     }),
     singleValue: (base) => ({
       ...base,
-      color: isDark ? '#e2e8f0' : '#1e293b',
+      color: 'var(--rs-text)',
       fontSize: '0.8125rem',
     }),
     placeholder: (base) => ({
       ...base,
-      color: isDark ? '#64748b' : '#94a3b8',
+      color: 'var(--rs-placeholder)',
       fontSize: '0.8125rem',
     }),
     indicatorSeparator: () => ({ display: 'none' }),
-    clearIndicator: (base) => ({ ...base, color: isDark ? '#64748b' : '#94a3b8', padding: '4px' }),
-    dropdownIndicator: (base) => ({ ...base, color: isDark ? '#64748b' : '#94a3b8', padding: '4px' }),
+    clearIndicator: (base) => ({ ...base, color: 'var(--rs-placeholder)', padding: '4px' }),
+    dropdownIndicator: (base) => ({ ...base, color: 'var(--rs-placeholder)', padding: '4px' }),
     menuPortal: base => ({ ...base, zIndex: 9999 }),
   };
 
@@ -142,7 +142,7 @@ const CascadeFilterBar = ({
         <div className="flex items-center gap-2 shrink-0 self-start md:self-center pt-1 md:pt-0">
           <SlidersHorizontal size={15} className="text-[#D4AF37]" />
           <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider md:hidden">
-            Filters
+            {t('filters')}
           </span>
         </div>
 
@@ -150,11 +150,11 @@ const CascadeFilterBar = ({
           {/* Department */}
           <div className="flex-1">
             <label className="block text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">
-              Department
+              {t('colDepartment')}
             </label>
             <Select
               isClearable
-              placeholder="All Departments"
+              placeholder={t('allDepartments')}
               styles={selectStyles}
               menuPortalTarget={document.body}
               options={departments?.map(d => ({ value: d.id, label: d.name }))}
@@ -166,32 +166,34 @@ const CascadeFilterBar = ({
           </div>
 
           {/* Study Year */}
-          <div className="flex-1">
-            <label className="block text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">
-              Study Year
-            </label>
-            <Select
-              isClearable
-              placeholder="All Years"
-              styles={selectStyles}
-              menuPortalTarget={document.body}
-              options={studyYears?.map(y => ({ value: y.id, label: y.name }))}
-              value={selectedStudyYear
-                ? { value: selectedStudyYear, label: studyYears?.find(y => y.id === selectedStudyYear)?.name }
-                : null}
-              onChange={handleStudyYearChange}
-            />
-          </div>
+          {['students', 'courses'].includes(activeTab) && (
+            <div className="flex-1">
+              <label className="block text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">
+                {t('colStudyYear')}
+              </label>
+              <Select
+                isClearable
+                placeholder={t('allYears')}
+                styles={selectStyles}
+                menuPortalTarget={document.body}
+                options={studyYears?.map(y => ({ value: y.id, label: y.name }))}
+                value={selectedStudyYear
+                  ? { value: selectedStudyYear, label: studyYears?.find(y => y.id === selectedStudyYear)?.name }
+                  : null}
+                onChange={handleStudyYearChange}
+              />
+            </div>
+          )}
 
           {/* Professor (courses + professors tab) */}
           {['courses', 'professors'].includes(activeTab) && (
             <div className="flex-1">
               <label className="block text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">
-                Professor
+                {t('colProfessor')}
               </label>
               <Select
                 isClearable
-                placeholder="All Professors"
+                placeholder={t('allProfessors')}
                 styles={selectStyles}
                 menuPortalTarget={document.body}
                 options={professors?.map(p => ({ value: p.id, label: p.name }))}
@@ -208,11 +210,11 @@ const CascadeFilterBar = ({
           {activeTab === 'students' && (
             <div className="flex-1">
               <label className="block text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">
-                Major
+                {t('colMajor')}
               </label>
               <Select
                 isClearable
-                placeholder="All Majors"
+                placeholder={t('allMajors')}
                 styles={selectStyles}
                 menuPortalTarget={document.body}
                 options={majors?.map(m => ({ value: m.id, label: m.name }))}
@@ -232,7 +234,7 @@ const CascadeFilterBar = ({
             onClick={clearAll}
             className="shrink-0 self-center text-xs font-semibold text-slate-400 dark:text-slate-500 hover:text-red-500 dark:hover:text-red-400 transition-colors px-2 py-1 rounded-lg hover:bg-red-50 dark:hover:bg-red-500/10 mt-auto md:mt-0 whitespace-nowrap"
           >
-            Clear all
+            {t('clearAll')}
           </button>
         )}
       </div>

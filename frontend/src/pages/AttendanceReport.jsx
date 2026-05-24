@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useContext } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import api from '../api/axios';
 import { Download, BookOpen, ClipboardList, ChevronDown, ChevronUp, Search, RefreshCw, Smartphone } from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
 
 // ─── Theme context (consumed from App-level provider) ─────────────────────────
 // SidebarDrawer receives `theme` as a prop from App.jsx — we replicate
@@ -161,6 +162,7 @@ function LectureGrid({ lectures, totalQuota, T }) {
 }
 
 function StudentRow({ student, totalQuota, T, glass, onResetDevice }) {
+  const { lang } = useLanguage();
   const [open, setOpen] = useState(false);
   const pct = student.attendance_pct;
   const pctCol = pctColor(pct, T);
@@ -190,15 +192,15 @@ function StudentRow({ student, totalQuota, T, glass, onResetDevice }) {
 
         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', flexShrink: 0 }}>
           <div style={{ textAlign: 'center' }}>
-            <p style={{ margin: 0, fontSize: '0.65rem', color: T.textMuted, textTransform: 'uppercase' }}>Present</p>
+            <p style={{ margin: 0, fontSize: '0.65rem', color: T.textMuted, textTransform: 'uppercase' }}>{lang === 'ar' ? 'حاضر' : 'Present'}</p>
             <p style={{ margin: 0, fontWeight: 700, color: T.present }}>{student.total_present}</p>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <p style={{ margin: 0, fontSize: '0.65rem', color: T.textMuted, textTransform: 'uppercase' }}>Absent</p>
+            <p style={{ margin: 0, fontSize: '0.65rem', color: T.textMuted, textTransform: 'uppercase' }}>{lang === 'ar' ? 'غائب' : 'Absent'}</p>
             <p style={{ margin: 0, fontWeight: 700, color: T.absent }}>{student.total_absent}</p>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <p style={{ margin: 0, fontSize: '0.65rem', color: T.textMuted, textTransform: 'uppercase' }}>Rate</p>
+            <p style={{ margin: 0, fontSize: '0.65rem', color: T.textMuted, textTransform: 'uppercase' }}>{lang === 'ar' ? 'النسبة' : 'Rate'}</p>
             <p style={{ margin: 0, fontWeight: 700, color: pctCol }}>{pct}%</p>
           </div>
           <div style={{ color: T.textMuted }}>
@@ -207,7 +209,7 @@ function StudentRow({ student, totalQuota, T, glass, onResetDevice }) {
           {onResetDevice && (
             <button
               onClick={(e) => { e.stopPropagation(); onResetDevice(student); }}
-              title="Reset device fingerprint for this student"
+              title={lang === 'ar' ? 'إعادة تعيين بصمة الجهاز' : 'Reset device fingerprint for this student'}
               style={{
                 padding: '0.3rem 0.6rem', borderRadius: 8, fontSize: '0.7rem',
                 background: 'rgba(212,175,55,0.12)', border: '1px solid rgba(212,175,55,0.3)',
@@ -215,7 +217,7 @@ function StudentRow({ student, totalQuota, T, glass, onResetDevice }) {
                 whiteSpace: 'nowrap', flexShrink: 0,
               }}
             >
-              <Smartphone size={12} /> Reset Device
+              <Smartphone size={12} /> {lang === 'ar' ? 'إعادة تعيين الجهاز' : 'Reset Device'}
             </button>
           )}
         </div>
@@ -229,7 +231,10 @@ function StudentRow({ student, totalQuota, T, glass, onResetDevice }) {
           animationName: 'fadeSlide', animationDuration: '0.2s', animationFillMode: 'both',
         }}>
           <p style={{ margin: '0.75rem 0 0.25rem', fontSize: '0.75rem', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Lecture attendance grid ({student.lectures_held} held / {totalQuota} total quota)
+            {lang === 'ar'
+              ? `شبكة محاضرات الحضور (${student.lectures_held} محاضرة / ${totalQuota} إجمالي)`
+              : `Lecture attendance grid (${student.lectures_held} held / ${totalQuota} total quota)`
+            }
           </p>
           <LectureGrid lectures={student.lectures} totalQuota={totalQuota} T={T} />
 
@@ -238,9 +243,9 @@ function StudentRow({ student, totalQuota, T, glass, onResetDevice }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
               <thead>
                 <tr>
-                  {['#', 'Date', 'Time', 'Status'].map(h => (
+                  {(lang === 'ar' ? ['#', 'التاريخ', 'الوقت', 'الحالة'] : ['#', 'Date', 'Time', 'Status']).map(h => (
                     <th key={h} style={{
-                      padding: '0.5rem 0.75rem', textAlign: 'left',
+                      padding: '0.5rem 0.75rem', textAlign: lang === 'ar' ? 'right' : 'left',
                       color: T.gold, fontWeight: 600, fontSize: '0.7rem',
                       textTransform: 'uppercase', letterSpacing: '0.08em',
                       borderBottom: `1px solid ${T.goldBorder}`,
@@ -261,7 +266,7 @@ function StudentRow({ student, totalQuota, T, glass, onResetDevice }) {
                         color: lec.status === 'Present' ? T.present : T.absent,
                         border: `1px solid ${lec.status === 'Present' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
                       }}>
-                        {lec.status}
+                        {lec.status === 'Present' ? (lang === 'ar' ? 'حاضر' : 'Present') : (lang === 'ar' ? 'غائب' : 'Absent')}
                       </span>
                     </td>
                   </tr>
@@ -279,6 +284,7 @@ function StudentRow({ student, totalQuota, T, glass, onResetDevice }) {
 // Tab 1: Comprehensive Course Report
 // ─────────────────────────────────────────────────────────────────────────────
 function CourseReport({ T, glass, goldGlass }) {
+  const { t, lang } = useLanguage();
   const [courses, setCourses] = useState([]);
   const [courseId, setCourseId] = useState('');
   const [report, setReport] = useState(null);
@@ -361,7 +367,7 @@ function CourseReport({ T, glass, goldGlass }) {
       <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem', flexWrap: 'wrap', alignItems: 'flex-end' }}>
         <div style={{ flex: '1 1 220px', minWidth: 180 }}>
           <label style={{ display: 'block', fontSize: '0.7rem', color: T.gold, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem', fontWeight: 600 }}>
-            Select Course
+            {lang === 'ar' ? 'اختر المادة' : 'Select Course'}
           </label>
           <select
             value={courseId}
@@ -372,7 +378,7 @@ function CourseReport({ T, glass, goldGlass }) {
               border: `1px solid ${T.goldBorder}`, outline: 'none', cursor: 'pointer',
             }}
           >
-            <option value="">— Choose a course —</option>
+            <option value="">{lang === 'ar' ? '— اختر مادة —' : '— Choose a course —'}</option>
             {courses.map(c => (
               <option key={c.id} value={c.id}>{c.code} · {c.name}</option>
             ))}
@@ -382,13 +388,13 @@ function CourseReport({ T, glass, goldGlass }) {
         {report && (
           <div style={{ flex: '1 1 200px', minWidth: 160 }}>
             <label style={{ display: 'block', fontSize: '0.7rem', color: T.gold, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '0.4rem', fontWeight: 600 }}>
-              Search Students
+              {lang === 'ar' ? 'بحث عن طالب' : 'Search Students'}
             </label>
             <div style={{ position: 'relative' }}>
               <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: T.textMuted }} />
               <input
                 value={search} onChange={e => setSearch(e.target.value)}
-                placeholder="Name or ID…"
+                placeholder={lang === 'ar' ? 'الاسم أو الرقم…' : 'Name or ID…'}
                 style={{
                   width: '100%', padding: '0.65rem 1rem 0.65rem 2.2rem', borderRadius: 10, fontSize: '0.875rem',
                   background: 'rgba(255,255,255,0.06)', color: T.text,
@@ -406,7 +412,7 @@ function CourseReport({ T, glass, goldGlass }) {
               background: 'rgba(255,255,255,0.06)', color: T.textMuted, cursor: 'pointer',
               display: 'flex', alignItems: 'center', gap: 6, fontSize: '0.8rem',
             }}>
-            <RefreshCw size={14} /> Refresh
+            <RefreshCw size={14} /> {lang === 'ar' ? 'تحديث' : 'Refresh'}
           </button>
           <button onClick={exportCSV} disabled={!report || !filtered.length}
             style={{
@@ -414,7 +420,7 @@ function CourseReport({ T, glass, goldGlass }) {
               background: T.goldDim, color: T.gold, border: `1px solid ${T.goldBorder}`,
               cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
             }}>
-            <Download size={14} /> Export CSV
+            <Download size={14} /> {lang === 'ar' ? 'تصدير CSV' : 'Export CSV'}
           </button>
         </div>
       </div>
@@ -423,14 +429,14 @@ function CourseReport({ T, glass, goldGlass }) {
       {!courseId && (
         <div style={{ textAlign: 'center', padding: '4rem 2rem', color: T.textMuted }}>
           <BookOpen size={48} style={{ marginBottom: '1rem', opacity: 0.3 }} />
-          <p style={{ margin: 0, fontSize: '1rem' }}>Select a course to generate the attendance report.</p>
+          <p style={{ margin: 0, fontSize: '1rem' }}>{lang === 'ar' ? 'اختر مادة لعرض تقرير الحضور.' : 'Select a course to generate the attendance report.'}</p>
         </div>
       )}
 
       {loading && (
         <div style={{ textAlign: 'center', padding: '3rem', color: T.textMuted }}>
           <RefreshCw size={28} style={{ animation: 'spin 1s linear infinite', marginBottom: '0.75rem' }} />
-          <p>Loading report…</p>
+          <p>{lang === 'ar' ? 'جارٍ التحميل…' : 'Loading report…'}</p>
         </div>
       )}
 
@@ -486,12 +492,15 @@ function CourseReport({ T, glass, goldGlass }) {
           {/* Student rows */}
           {filtered.length === 0 ? (
             <div style={{ ...glass, padding: '2.5rem', textAlign: 'center', color: T.textMuted }}>
-              No students match your search.
+              {lang === 'ar' ? 'لا يوجد طلاب مطابقون لبحثك.' : 'No students match your search.'}
             </div>
           ) : (
             <div>
               <p style={{ fontSize: '0.75rem', color: T.textMuted, marginBottom: '0.75rem' }}>
-                Showing {filtered.length} of {report?.students?.length || 0} students — click a row to expand lecture details ↓
+                {lang === 'ar'
+                  ? `يعرض ${filtered.length} من ${report?.students?.length || 0} طالب`
+                  : `Showing ${filtered.length} of ${report?.students?.length || 0} students — click a row to expand lecture details ↓`
+                }
               </p>
               {filtered.map(s => (
                 <StudentRow
@@ -512,6 +521,7 @@ function CourseReport({ T, glass, goldGlass }) {
 // Tab 2: Session Report (fine-grained filter)
 // ─────────────────────────────────────────────────────────────────────────────
 function SessionReport({ T, glass }) {
+  const { lang, t } = useLanguage();
   const [courses, setCourses]   = useState([]);
   const [filters, setFilters]   = useState({ course_id: '', teacher_id: '', student_id: '', session_id: '' });
   const [results, setResults]   = useState([]);
@@ -549,23 +559,23 @@ function SessionReport({ T, glass }) {
       <div style={{ ...glass, padding: '1.25rem', marginBottom: '1.5rem' }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(180px, 1fr))', gap: '1rem', marginBottom: '1rem' }}>
           <div>
-            <label style={labelStyle}>Course</label>
+            <label style={labelStyle}>{lang === 'ar' ? 'المادة' : 'Course'}</label>
             <select value={filters.course_id} onChange={e => setF('course_id', e.target.value)} style={inputStyle}>
-              <option value="">All courses</option>
+              <option value="">{lang === 'ar' ? 'كل المواد' : 'All courses'}</option>
               {courses.map(c => <option key={c.id} value={c.id}>{c.code} · {c.name}</option>)}
             </select>
           </div>
           <div>
-            <label style={labelStyle}>Session ID</label>
-            <input value={filters.session_id} onChange={e => setF('session_id', e.target.value)} placeholder="e.g. 42" style={inputStyle} />
+            <label style={labelStyle}>{lang === 'ar' ? 'رقم الجلسة' : 'Session ID'}</label>
+            <input value={filters.session_id} onChange={e => setF('session_id', e.target.value)} placeholder={lang === 'ar' ? 'مثال: 42' : 'e.g. 42'} style={inputStyle} />
           </div>
           <div>
-            <label style={labelStyle}>Teacher ID</label>
-            <input value={filters.teacher_id} onChange={e => setF('teacher_id', e.target.value)} placeholder="Professor PK" style={inputStyle} />
+            <label style={labelStyle}>{lang === 'ar' ? 'رقم الأستاذ' : 'Teacher ID'}</label>
+            <input value={filters.teacher_id} onChange={e => setF('teacher_id', e.target.value)} placeholder={lang === 'ar' ? 'رقم الأستاذ' : 'Professor PK'} style={inputStyle} />
           </div>
           <div>
-            <label style={labelStyle}>Student ID</label>
-            <input value={filters.student_id} onChange={e => setF('student_id', e.target.value)} placeholder="e.g. STU-001" style={inputStyle} />
+            <label style={labelStyle}>{lang === 'ar' ? 'رقم الطالب' : 'Student ID'}</label>
+            <input value={filters.student_id} onChange={e => setF('student_id', e.target.value)} placeholder={lang === 'ar' ? 'مثال: STU-001' : 'e.g. STU-001'} style={inputStyle} />
           </div>
         </div>
         <button onClick={fetchReport}
@@ -574,7 +584,7 @@ function SessionReport({ T, glass }) {
             background: T.goldDim, color: T.gold, border: `1px solid ${T.goldBorder}`,
             cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 6,
           }}>
-          <Search size={14} /> Search Records
+          <Search size={14} /> {lang === 'ar' ? 'بحث في السجلات' : 'Search Records'}
         </button>
       </div>
 
@@ -582,14 +592,17 @@ function SessionReport({ T, glass }) {
       <div style={{ ...glass, padding: 0, overflow: 'hidden' }}>
         <div style={{ padding: '0.75rem 1.25rem', borderBottom: `1px solid ${T.border}`, display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <span style={{ fontSize: '0.8rem', color: T.textMuted }}>
-            {loading ? 'Loading…' : `${count} record${count !== 1 ? 's' : ''} found`}
+            {loading ? (lang === 'ar' ? 'جارٍ التحميل…' : 'Loading…') : `${count} ${lang === 'ar' ? 'سجل' : `record${count !== 1 ? 's' : ''} found`}`}
           </span>
         </div>
         <div style={{ overflowX: 'auto' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
             <thead>
               <tr>
-                {['Student ID', 'Student Name', 'Course', 'Professor', 'Semester', 'Scanned At', 'Status'].map(h => (
+                {(lang === 'ar'
+                  ? ['رقم الطالب', 'اسم الطالب', t('colCourse'), t('colProfessor'), t('colSemester'), 'وقت المسح', 'الحالة']
+                  : ['Student ID', 'Student Name', 'Course', 'Professor', 'Semester', 'Scanned At', 'Status']
+                ).map(h => (
                   <th key={h} style={{
                     padding: '0.75rem 1rem', textAlign: 'left',
                     color: T.gold, fontWeight: 600, fontSize: '0.7rem',
@@ -604,7 +617,7 @@ function SessionReport({ T, glass }) {
               {results.length === 0 ? (
                 <tr>
                   <td colSpan={7} style={{ padding: '2.5rem', textAlign: 'center', color: T.textMuted }}>
-                    {loading ? 'Loading…' : 'No records found. Try adjusting filters.'}
+                    {loading ? (lang === 'ar' ? 'جارٍ التحميل…' : 'Loading…') : (lang === 'ar' ? 'لم يتم العثور على سجلات. حاول تعديل الفلاتر.' : 'No records found. Try adjusting filters.')}
                   </td>
                 </tr>
               ) : (
@@ -646,16 +659,18 @@ function SessionReport({ T, glass }) {
   );
 }
 
+// ── Report tabs ───────────────────────────────────────────────────────────────
+const TABS = [
+  { id: 'course',   labelAr: 'تقرير المادة',   labelEn: 'Course Report',  icon: BookOpen },
+  { id: 'session',  labelAr: 'تقرير الجلسة',   labelEn: 'Session Report', icon: ClipboardList },
+];
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Root component
 // ─────────────────────────────────────────────────────────────────────────────
-const TABS = [
-  { id: 'course',   label: 'Course Report',   icon: BookOpen },
-  { id: 'session',  label: 'Session Report',  icon: ClipboardList },
-];
-
 export default function AttendanceReport() {
   const [tab, setTab] = useState('course');
+  const { lang } = useLanguage();
   const isDark = useTheme();
   const T       = makeTokens(isDark);
   const glass     = makeGlass(T);
@@ -678,10 +693,10 @@ export default function AttendanceReport() {
         <h1 style={{ margin: 0, fontSize: 'clamp(1.4rem, 3vw, 1.8rem)', fontWeight: 800,
           background: `linear-gradient(135deg, ${T.gold} 0%, #f5e06e 50%, ${T.gold} 100%)`,
           WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
-          Attendance Reports
+          {lang === 'ar' ? 'تقارير الحضور' : 'Attendance Reports'}
         </h1>
         <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: T.textMuted }}>
-          Comprehensive academic attendance analytics
+          {lang === 'ar' ? 'تحليلات أكاديمية شاملة للحضور' : 'Comprehensive academic attendance analytics'}
         </p>
       </div>
 
@@ -691,7 +706,8 @@ export default function AttendanceReport() {
         background: 'rgba(255,255,255,0.04)', padding: '0.3rem', borderRadius: 12,
         border: `1px solid ${T.border}`, width: 'fit-content', position: 'relative',
       }}>
-        {TABS.map(({ id, label, icon: Icon }) => {
+        {TABS.map(({ id, labelAr, labelEn, icon: Icon }) => {
+          const label = lang === 'ar' ? labelAr : labelEn;
           const isActive = tab === id;
           return (
             <motion.button

@@ -1,5 +1,5 @@
-/* ── Google Font — must come first ───────────────────────── */
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
+/* ── Google Fonts — Inter (EN) + Cairo (AR) ──────────────── */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Cairo:wght@300;400;500;600;700;800;900&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -8,11 +8,49 @@
 
 /* ── Base resets ──────────────────────────────────────────── */
 @layer base {
-  *, *::before, *::after { box-sizing: border-box; }
-  html { scroll-behavior: smooth; }
+  *, *::before, *::after {
+    box-sizing: border-box;
+    /* Ensure ALL elements participate in theme transitions */
+    transition-property: color, background-color, border-color, fill, stroke, opacity;
+    transition-duration: 250ms;
+    transition-timing-function: ease;
+  }
 
+  html {
+    scroll-behavior: smooth;
+  }
+
+  /* LTR default font */
   body {
-    @apply bg-gray-50 text-slate-800 font-sans antialiased transition-colors duration-300;
+    @apply bg-gray-50 text-slate-800 font-sans antialiased;
+    font-family: 'Inter', system-ui, sans-serif;
+  }
+
+    /* RTL Arabic font override */
+  [dir="rtl"] body,
+  [dir="rtl"] {
+    font-family: 'Cairo', 'Inter', system-ui, sans-serif;
+    letter-spacing: 0;
+  }
+
+  :root {
+    --rs-bg: #ffffff;
+    --rs-border: #e2e8f0;
+    --rs-menu-bg: #ffffff;
+    --rs-option-hover: rgba(0,0,0,0.04);
+    --rs-text: #1e293b;
+    --rs-placeholder: #94a3b8;
+    --rs-text-gold: #92700d;
+  }
+
+  .dark {
+    --rs-bg: rgba(15, 23, 42, 0.7);
+    --rs-border: #334155;
+    --rs-menu-bg: #1e293b;
+    --rs-option-hover: rgba(255,255,255,0.05);
+    --rs-text: #e2e8f0;
+    --rs-placeholder: #64748b;
+    --rs-text-gold: #D4AF37;
   }
 
   .dark body {
@@ -29,8 +67,12 @@
 
   /* ── Standard card ── */
   .card {
-    @apply bg-white dark:bg-slate-900/80 rounded-2xl border border-gray-200 dark:border-slate-700/60 shadow-sm transition-colors;
+    @apply bg-white dark:bg-slate-900/80 rounded-2xl border border-gray-200 dark:border-slate-700/60 shadow-sm;
   }
+
+  /* RTL text alignment helper */
+  [dir="rtl"] .ltr-only { display: none; }
+  [dir="ltr"] .rtl-only { display: none; }
 
   /* ── Float Card (Anti-Gravity KPI Cards) ── */
   .float-card {

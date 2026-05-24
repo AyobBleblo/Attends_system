@@ -2,8 +2,10 @@ import React, { useState } from 'react';
 import { Dialog } from '@headlessui/react';
 import { X, Lock, Loader2, CheckCircle2 } from 'lucide-react';
 import api from '../../api/axios';
+import { useLanguage } from '../../context/LanguageContext';
 
 const ChangePasswordModal = ({ isOpen, onClose }) => {
+  const { t } = useLanguage();
   const [oldPassword, setOldPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -14,7 +16,7 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (newPassword !== confirmPassword) {
-      setError("New passwords do not match.");
+      setError(t('passwordMismatch'));
       return;
     }
 
@@ -36,7 +38,7 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
         setSuccess(false);
       }, 2000);
     } catch (err) {
-      setError(err.response?.data?.error || "An error occurred while changing your password.");
+      setError(err.response?.data?.error || t('passwordMismatch'));
     } finally {
       setLoading(false);
     }
@@ -59,7 +61,7 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
           <div className="flex items-center justify-between mb-6">
             <Dialog.Title className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
               <Lock size={18} className="text-brand-500" />
-              Change Password
+              {t('changePasswordTitle')}
             </Dialog.Title>
             <button onClick={resetState} className="btn-ghost p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800">
               <X size={18} className="text-slate-500" />
@@ -71,14 +73,14 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
               <div className="w-12 h-12 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center mb-4">
                 <CheckCircle2 size={24} className="text-emerald-500" />
               </div>
-              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-2">Password Updated!</h3>
-              <p className="text-slate-500 dark:text-slate-400 text-sm">Your password has been changed successfully.</p>
+              <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-2">{t('passwordUpdated')}</h3>
+              <p className="text-slate-500 dark:text-slate-400 text-sm">{t('passwordSuccess')}</p>
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-4">
               <div>
                 <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Current Password
+                  {t('currentPassword')}
                 </label>
                 <input
                   type="password"
@@ -91,7 +93,7 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
 
               <div>
                 <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  New Password
+                  {t('newPassword')}
                 </label>
                 <input
                   type="password"
@@ -104,7 +106,7 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
 
               <div>
                 <label className="block text-sm font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
-                  Confirm New Password
+                  {t('confirmNewPassword')}
                 </label>
                 <input
                   type="password"
@@ -130,9 +132,9 @@ const ChangePasswordModal = ({ isOpen, onClose }) => {
                   className="btn-primary w-full justify-center min-h-[44px] shadow-md hover:shadow-lg transition-all"
                 >
                   {loading ? (
-                    <><Loader2 size={18} className="animate-spin mr-2" /> Saving...</>
+                    <><Loader2 size={18} className="animate-spin mr-2" /> {t('saving')}</>
                   ) : (
-                    'Update Password'
+                    t('updatePassword')
                   )}
                 </button>
               </div>

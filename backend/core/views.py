@@ -16,7 +16,7 @@ class DepartmentListView(APIView):
 
     @method_decorator(cache_page(60 * 15))
     def get(self, request):
-        departments = Department.objects.all()
+        departments = Department.objects.prefetch_related('majors').all()
         serializer = DepartmentSerializer(departments, many=True)
         return Response(serializer.data)
 
@@ -102,3 +102,29 @@ class AdminStudyYearViewSet(viewsets.ModelViewSet):
     queryset = StudyYear.objects.all().order_by('order', 'name')
     serializer_class = StudyYearSerializer
     permission_classes = [IsAdminUser]
+
+
+class AdminDepartmentViewSet(viewsets.ModelViewSet):
+    queryset = Department.objects.prefetch_related('majors').all().order_by('name')
+    serializer_class = DepartmentSerializer
+    permission_classes = [IsAdminUser]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        department_id = self.request.query_params.get('department_id')
+        if department_id:
+            queryset = queryset.filter(id=department_id)
+        return queryset
+
+
+class AdminMajorViewSet(viewsets.ModelViewSet):
+    queryset = Major.objects.select_related('department').all().order_by('name')
+    serializer_class = MajorSerializer
+    permission_classes = [IsAdminUser]
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        department_id = self.request.query_params.get('department_id')
+        if department_id:
+            queryset = queryset.filter(department_id=department_id)
+        return queryset

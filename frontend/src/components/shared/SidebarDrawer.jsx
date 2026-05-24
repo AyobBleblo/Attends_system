@@ -16,41 +16,43 @@ import {
   Bell,
   Menu,
   X,
+  Languages,
 } from 'lucide-react';
 import { useAuth } from '../../context/AuthContext';
+import { useLanguage } from '../../context/LanguageContext';
 import ChangePasswordModal from './ChangePasswordModal';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Nav items per role
+// Nav items per role (labels supplied via t())
 // ─────────────────────────────────────────────────────────────────────────────
-function getNavItems(role) {
+function getNavItems(role, t) {
   if (role === 'admin') {
     return [
-      { to: '/admin-dashboard', icon: LayoutDashboard, label: 'Dashboard' },
-      { to: '/admin-report',    icon: BarChart2,        label: 'Reports'   },
+      { to: '/admin-dashboard', icon: LayoutDashboard, labelKey: 'dashboard' },
+      { to: '/admin-report',    icon: BarChart2,        labelKey: 'reports'   },
     ];
   }
   if (role === 'professor') {
     return [
-      { to: '/professor',     icon: BookOpen,      label: 'My Courses' },
-      { to: '/report',        icon: BarChart2,     label: 'Reports'    },
+      { to: '/professor', icon: BookOpen,  labelKey: 'myCourses' },
+      { to: '/report',    icon: BarChart2, labelKey: 'reports'   },
     ];
   }
   if (role === 'student') {
     return [
-      { to: '/student', icon: BookOpen, label: 'My Attendance' },
+      { to: '/student', icon: BookOpen, labelKey: 'myAttendance' },
     ];
   }
   return [];
 }
 
 // ───────────────────────────────────────────────────────────────────────────────
-// Individual nav item  — label always visible when expanded; glass tooltip when collapsed
+// Individual nav item
 // ───────────────────────────────────────────────────────────────────────────────
-function SidebarNavItem({ item, collapsed, onClick }) {
+function SidebarNavItem({ item, collapsed, onClick, t }) {
   const Icon = item.icon;
+  const label = t(item.labelKey);
   return (
-    // `group` wrapper lets CSS children react to hover on this container
     <div className="relative group">
       <NavLink
         to={item.to}
@@ -66,7 +68,6 @@ function SidebarNavItem({ item, collapsed, onClick }) {
       >
         {({ isActive }) => (
           <>
-            {/* Gold left-bar for active state */}
             {isActive && (
               <motion.div
                 layoutId="activeBar"
@@ -84,7 +85,6 @@ function SidebarNavItem({ item, collapsed, onClick }) {
               }`}
             />
 
-            {/* Expanded sidebar: animate label in/out */}
             <AnimatePresence initial={false}>
               {!collapsed && (
                 <motion.span
@@ -95,7 +95,7 @@ function SidebarNavItem({ item, collapsed, onClick }) {
                   transition={{ duration: 0.2 }}
                   className="text-sm font-medium whitespace-nowrap overflow-hidden"
                 >
-                  {item.label}
+                  {label}
                 </motion.span>
               )}
             </AnimatePresence>
@@ -103,7 +103,7 @@ function SidebarNavItem({ item, collapsed, onClick }) {
         )}
       </NavLink>
 
-      {/* ✨ Glass Tooltip — only when sidebar is COLLAPSED and user hovers */}
+      {/* Glass Tooltip when collapsed */}
       {collapsed && (
         <div
           className="
@@ -114,7 +114,6 @@ function SidebarNavItem({ item, collapsed, onClick }) {
             transition-all duration-200 ease-out
           "
         >
-          {/* Frosted-glass chip */}
           <div
             className="
               flex items-center gap-1.5 px-3 py-1.5 rounded-xl whitespace-nowrap
@@ -125,11 +124,9 @@ function SidebarNavItem({ item, collapsed, onClick }) {
               text-sm font-semibold text-slate-700 dark:text-slate-100
             "
           >
-            {/* Gold accent dot */}
             <span className="w-1.5 h-1.5 rounded-full bg-[#D4AF37] shrink-0" />
-            {item.label}
+            {label}
           </div>
-          {/* Triangle arrow pointing left toward the icon */}
           <div
             className="
               absolute right-full top-1/2 -translate-y-1/2 mr-[-1px]
@@ -144,10 +141,39 @@ function SidebarNavItem({ item, collapsed, onClick }) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Reusable bottom action button
+// ─────────────────────────────────────────────────────────────────────────────
+function BottomBtn({ icon: Icon, label, collapsed, onClick, className = '', labelKey }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl transition-all ${className}`}
+    >
+      <Icon size={19} className="shrink-0" />
+      <AnimatePresence initial={false}>
+        {!collapsed && (
+          <motion.span
+            key={labelKey}
+            initial={{ opacity: 0, width: 0 }}
+            animate={{ opacity: 1, width: 'auto' }}
+            exit={{ opacity: 0, width: 0 }}
+            transition={{ duration: 0.2 }}
+            className="text-sm font-medium whitespace-nowrap overflow-hidden"
+          >
+            {label}
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Main SidebarDrawer
 // ─────────────────────────────────────────────────────────────────────────────
 function SidebarDrawer({ theme, toggleTheme }) {
   const { user, logout } = useAuth();
+  const { t, toggleLang, lang } = useLanguage();
   const navigate              = useNavigate();
   const [collapsed,  setCollapsed]  = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -160,7 +186,7 @@ function SidebarDrawer({ theme, toggleTheme }) {
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
-  const navItems = getNavItems(user?.role);
+  const navItems = getNavItems(user?.role, t);
 
   const handleLogout = () => {
     logout();
@@ -225,7 +251,7 @@ function SidebarDrawer({ theme, toggleTheme }) {
                   className="overflow-hidden"
                 >
                   <span className="text-base font-extrabold text-gold-gradient whitespace-nowrap">
-                    AlArab University
+                    {lang === 'ar' ? 'جامعة العرب' : 'AlArab University'}
                   </span>
                 </motion.div>
               )}
@@ -260,7 +286,9 @@ function SidebarDrawer({ theme, toggleTheme }) {
                 </div>
                 <div className="min-w-0">
                   <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{user.name}</p>
-                  <p className="text-[11px] text-[#B8860B] dark:text-gold-500 capitalize font-medium">{user.role}</p>
+                  <p className="text-[11px] text-[#B8860B] dark:text-gold-500 capitalize font-medium">
+                    {t(`role${user.role.charAt(0).toUpperCase() + user.role.slice(1)}`)}
+                  </p>
                 </div>
               </div>
             </motion.div>
@@ -270,92 +298,66 @@ function SidebarDrawer({ theme, toggleTheme }) {
         {/* ── Nav links ── */}
         <nav className="flex-1 overflow-y-auto overflow-x-hidden px-2 py-4 space-y-1">
           {navItems.map(item => (
-            <SidebarNavItem key={item.to} item={item} collapsed={!isMobile && collapsed} onClick={() => isMobile && setMobileOpen(false)} />
+            <SidebarNavItem
+              key={item.to}
+              item={item}
+              collapsed={!isMobile && collapsed}
+              onClick={() => isMobile && setMobileOpen(false)}
+              t={t}
+            />
           ))}
         </nav>
 
         {/* ── Bottom actions ── */}
         <div className="px-2 py-3 border-t border-white/5 space-y-1 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
 
+          {/* Language toggle */}
+          <BottomBtn
+            icon={Languages}
+            label={t('language')}
+            collapsed={!isMobile && collapsed}
+            onClick={toggleLang}
+            labelKey="lang-label"
+            className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-gray-50 dark:hover:bg-white/5"
+          />
+
           {/* Theme toggle */}
-          <button
+          <BottomBtn
+            icon={theme === 'dark' ? Sun : Moon}
+            label={theme === 'dark' ? t('lightMode') : t('darkMode')}
+            collapsed={!isMobile && collapsed}
             onClick={toggleTheme}
-            className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
-                       text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
-            aria-label="Toggle theme"
-          >
-            {theme === 'dark'
-              ? <Sun  size={19} className="shrink-0" />
-              : <Moon size={19} className="shrink-0" />}
-            <AnimatePresence initial={false}>
-              {!collapsed && (
-                <motion.span
-                  key="theme-label"
-                  initial={{ opacity: 0, width: 0 }}
-                  animate={{ opacity: 1, width: 'auto' }}
-                  exit={{ opacity: 0, width: 0 }}
-                  transition={{ duration: 0.2 }}
-                  className="text-sm font-medium whitespace-nowrap overflow-hidden"
-                >
-                  {theme === 'dark' ? 'Light Mode' : 'Dark Mode'}
-                </motion.span>
-              )}
-            </AnimatePresence>
-          </button>
+            labelKey="theme-label"
+            className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-gray-50 dark:hover:bg-white/5"
+          />
 
           {/* Change Password */}
           {user && (
-            <button
+            <BottomBtn
+              icon={KeyRound}
+              label={t('changePassword')}
+              collapsed={!isMobile && collapsed}
               onClick={() => setPwdOpen(true)}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
-                         text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-gray-50 dark:hover:bg-white/5 transition-all"
-            >
-              <KeyRound size={19} className="shrink-0" />
-              <AnimatePresence initial={false}>
-                {!collapsed && (
-                  <motion.span
-                    key="pwd-label"
-                    initial={{ opacity: 0, width: 0 }}
-                    animate={{ opacity: 1, width: 'auto' }}
-                    exit={{ opacity: 0, width: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="text-sm font-medium whitespace-nowrap overflow-hidden"
-                  >
-                    Change Password
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </button>
+              labelKey="pwd-label"
+              className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-gray-50 dark:hover:bg-white/5"
+            />
           )}
 
           {/* Logout */}
           {user && (
-            <button
+            <BottomBtn
+              icon={LogOut}
+              label={t('logout')}
+              collapsed={!isMobile && collapsed}
               onClick={handleLogout}
-              className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl
-                         text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 transition-all"
-            >
-              <LogOut size={19} className="shrink-0" />
-              <AnimatePresence initial={false}>
-                {!collapsed && (
-                  <motion.span
-                    key="logout-label"
-                    initial={{ opacity: 0, width: 0 }}
-                    animate={{ opacity: 1, width: 'auto' }}
-                    exit={{ opacity: 0, width: 0 }}
-                    transition={{ duration: 0.2 }}
-                    className="text-sm font-medium whitespace-nowrap overflow-hidden"
-                  >
-                    Logout
-                  </motion.span>
-                )}
-              </AnimatePresence>
-            </button>
+              labelKey="logout-label"
+              className="text-red-500 dark:text-red-400 hover:text-red-600 dark:hover:text-red-300 hover:bg-red-50 dark:hover:bg-red-900/20"
+            />
           )}
         </div>
       </motion.aside>
 
-      {/* Password modal (outside aside so it can be full-screen) */}
+      {/* Password modal */}
       <ChangePasswordModal isOpen={pwdOpen} onClose={() => setPwdOpen(false)} />
     </>
   );
