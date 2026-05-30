@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { Dialog } from '@headlessui/react';
 import api from '../api/axios';
 import {
   Users, GraduationCap, BookOpen, Link2, ClipboardList,
   UserPlus, RefreshCw, X, Loader2, KeyRound, Search, Unlock, Calendar, ChevronDown,
-  Building2, Plus, Check, Trash2
+  Building2, Plus, Check, Trash2, MoreHorizontal, Edit2, Layers
 } from 'lucide-react';
 import StatsBar from '../components/admin/StatsBar';
 import DataTable, { nameToColor, initials } from '../components/admin/DataTable';
@@ -26,6 +26,7 @@ const TABS = [
   { key: 'enrollments', labelKey: 'enrollments', icon: ClipboardList },
   { key: 'semesters',   labelKey: 'semesters',   icon: Calendar },
   { key: 'departments', labelKey: 'departments', icon: Building2 },
+  { key: 'majors',      labelKey: 'majors',      icon: Layers },
 ];
 
 const EP = {
@@ -76,6 +77,17 @@ const AdminDashboard = () => {
   const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState('students');
   const [data, setData] = useState({ students: [], professors: [], courses: [], assignments: [], enrollments: [], semesters: [], departments: [], majors: [] });
+  // Majors tab inline management
+  const [majorMenuOpen, setMajorMenuOpen] = useState(null); // id of major with open menu
+  const [editMajorId, setEditMajorId] = useState(null);
+  const [editMajorName, setEditMajorName] = useState('');
+  const [showAddMajorModal, setShowAddMajorModal] = useState(false);
+  const [addMajorDeptId, setAddMajorDeptId] = useState('');
+  const [addMajorName, setAddMajorName] = useState('');
+  const [addMajorLoading, setAddMajorLoading] = useState(false);
+  const [addMajorError, setAddMajorError] = useState(null);
+  const [majorFilterDept, setMajorFilterDept] = useState(null);
+  const majorMenuRef = useRef(null);
   const [loading, setLoading] = useState(false);
   const [statsLoading, setStatsLoading] = useState(true);
   const [counts, setCounts] = useState({});
@@ -145,6 +157,9 @@ const AdminDashboard = () => {
       if (tab === 'students') {
         if (filterState.major) params.append('major_id', filterState.major);
       }
+      if (tab === 'majors') {
+        if (majorFilterDept) params.append('department_id', majorFilterDept);
+      }
       
       const qs = params.toString() ? `?${params.toString()}` : '';
       
@@ -160,7 +175,7 @@ const AdminDashboard = () => {
     } catch (e) {
       console.error(e);
     } finally { setLoading(false); }
-  }, [searchQuery, page, filterState]);
+  }, [searchQuery, page, filterState, majorFilterDept]);
 
   // Handle Search Debounce — reset to page 1 on new search
   useEffect(() => {
@@ -183,6 +198,22 @@ const AdminDashboard = () => {
       fetchData(activeTab, searchQuery, 1);
     }
   }, [filterState]);
+
+  // Re-fetch majors when dept filter changes
+  useEffect(() => {
+    if (activeTab === 'majors') fetchData('majors', searchQuery, 1);
+  }, [majorFilterDept]);
+
+  // Close major row menu on outside click
+  useEffect(() => {
+    const handler = (e) => {
+      if (majorMenuRef.current && !majorMenuRef.current.contains(e.target)) {
+        setMajorMenuOpen(null);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
 
 
   // ── Fetch stats ─────────────────────────────────────────────────────────────
@@ -575,7 +606,7 @@ const AdminDashboard = () => {
   const TAB_COLORS = {
     students: 'bg-indigo-500', professors: 'bg-violet-500',
     courses: 'bg-sky-500', assignments: 'bg-amber-500', enrollments: 'bg-emerald-500', semesters: 'bg-rose-500',
-    departments: 'bg-teal-500'
+    departments: 'bg-teal-500', majors: 'bg-purple-500'
   };
 
   // Build breadcrumb from active tab
@@ -587,43 +618,69 @@ const AdminDashboard = () => {
   const clearFilters = () => setFilterState({ department: null, studyYear: null, professor: null, major: null });
   const hasActiveFilters = Object.values(filterState).some(Boolean);
 
-  const handleAddMajor = async (e) => {
+  // ── Majors Tab: Add Major Modal ────────────────────────────────────────────
+  const handleOpenAddMajor = () => {
+    setAddMajorName('');
+    setAddMajorDeptId(majorFilterDept ? String(majorFilterDept) : '');
+    setAddMajorError(null);
+    setShowAddMajorModal(true);
+  };
+
+  const handleAddMajorSubmit = async (e) => {
     e.preventDefault();
-    if (!newMajorName.trim() || !selectedDept) return;
-    setMajorActionLoading(true);
+    if (!addMajorName.trim() || !addMajorDeptId) return;
+    setAddMajorLoading(true);
+    setAddMajorError(null);
     try {
       await api.post('admin/majors/', {
-        name: newMajorName.trim(),
-        department: selectedDept
+        name: addMajorName.trim(),
+        department: parseInt(addMajorDeptId)
       });
-      setNewMajorName('');
+      setShowAddMajorModal(false);
       loadRelations();
-      fetchData('departments');
-      alert('Major added successfully!');
+      fetchData('majors');
     } catch (err) {
-      alert(`Error adding major: ${formatError(err)}`);
+      setAddMajorError(formatError(err));
     } finally {
-      setMajorActionLoading(false);
+      setAddMajorLoading(false);
     }
   };
 
-  const handleDeleteMajor = async () => {
-    if (!selectedMajor) return;
-    const majorName = allMajors.find(m => m.id === selectedMajor)?.name;
-    if (!window.confirm(`Delete major "${majorName}"? This will affect students assigned to it.`)) return;
-    setMajorActionLoading(true);
+  // ── Majors Tab: Edit Major ────────────────────────────────────────────────
+  const handleStartEditMajor = (major) => {
+    setEditMajorId(major.id);
+    setEditMajorName(major.name);
+    setMajorMenuOpen(null);
+  };
+
+  const handleSaveEditMajor = async (major) => {
+    if (!editMajorName.trim()) return;
     try {
-      await api.delete(`admin/majors/${selectedMajor}/`);
-      setSelectedMajor(null);
+      await api.patch(`admin/majors/${major.id}/`, { name: editMajorName.trim() });
+      setEditMajorId(null);
       loadRelations();
-      fetchData('departments');
-      alert('Major deleted successfully!');
+      fetchData('majors');
     } catch (err) {
-      alert(`Error deleting major: ${formatError(err)}`);
-    } finally {
-      setMajorActionLoading(false);
+      alert(`Error updating major: ${formatError(err)}`);
     }
   };
+
+  // ── Majors Tab: Delete Major ──────────────────────────────────────────────
+  const handleDeleteMajorRow = async (major) => {
+    if (!window.confirm(t('confirmDeleteMajor'))) return;
+    setMajorMenuOpen(null);
+    try {
+      await api.delete(`admin/majors/${major.id}/`);
+      loadRelations();
+      fetchData('majors');
+    } catch (err) {
+      alert(`Error deleting major: ${formatError(err)}`);
+    }
+  };
+
+  // ── Legacy handlers (kept for compatibility) ──────────────────────────────
+  const handleAddMajor = async (e) => { e.preventDefault(); };
+  const handleDeleteMajor = async () => {};
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 py-8">
@@ -784,142 +841,159 @@ const AdminDashboard = () => {
             </div>
           )}
         </div>
-      ) : (
-        /* Custom Departments & Majors Split Layout */
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Departments Table (Left Column) */}
-          <div className="lg:col-span-2 float-card p-5 min-w-0">
-            <div className="flex justify-between items-center mb-5 flex-wrap gap-3">
-              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                {t('colDepartment')}
-              </h2>
-              <div className="flex gap-2">
-                <button
-                  onClick={() => fetchData('departments')}
-                  className="btn-ghost"
-                >
-                  <RefreshCw size={15} /> {t('refresh2')}
-                </button>
-                <button
-                  onClick={() => { setFormData({}); setFormError(null); loadRelations(); setShowModal(true); }}
-                  className="btn-primary"
-                >
-                  <UserPlus size={15} /> {t('addDepartment')}
-                </button>
-              </div>
+      ) : activeTab === 'departments' ? (
+        /* Departments-only Table */
+        <div className="float-card p-5 min-w-0">
+          <div className="flex justify-between items-center mb-5 flex-wrap gap-3">
+            <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+              {t('departments')}
+            </h2>
+            <div className="flex gap-2">
+              <button onClick={() => fetchData('departments')} className="btn-ghost">
+                <RefreshCw size={15} /> {t('refresh2')}
+              </button>
+              <button
+                onClick={() => { setFormData({}); setFormError(null); loadRelations(); setShowModal(true); }}
+                className="btn-primary"
+              >
+                <UserPlus size={15} /> {t('addDepartment')}
+              </button>
             </div>
+          </div>
+          <DataTable
+            tableId="admin-departments"
+            columns={columns.departments}
+            data={data.departments}
+            loading={loading}
+            onDelete={handleDelete}
+            emptyText={t('noData')}
+            onClearFilters={hasActiveFilters ? clearFilters : undefined}
+          />
+        </div>
+      ) : (
+        /* Majors Tab with inline management */
+        <div className="float-card p-5 min-w-0">
+          {/* Header */}
+          <div className="flex justify-between items-center mb-5 flex-wrap gap-3">
+            <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
+              {t('majors')}
+            </h2>
+            <div className="flex gap-2">
+              <button onClick={() => fetchData('majors')} className="btn-ghost">
+                <RefreshCw size={15} /> {t('refresh2')}
+              </button>
+              <button onClick={handleOpenAddMajor} className="btn-primary">
+                <Plus size={15} /> {t('addMajor')}
+              </button>
+            </div>
+          </div>
 
-            <DataTable
-              tableId="admin-departments"
-              columns={columns.departments}
-              data={data.departments}
-              loading={loading}
-              onDelete={handleDelete}
-              emptyText={t('noData')}
-              onClearFilters={hasActiveFilters ? clearFilters : undefined}
+          {/* Department filter for majors */}
+          <div className="mb-5">
+            <label className="block text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1.5">
+              {t('filterByDept')}
+            </label>
+            <Select
+              isClearable
+              placeholder={t('allDepartments')}
+              options={allDepartments.map(d => ({ value: d.id, label: `${d.name} (${d.code})` }))}
+              value={majorFilterDept
+                ? { value: majorFilterDept, label: allDepartments.find(d => d.id === majorFilterDept)?.name }
+                : null}
+              onChange={val => setMajorFilterDept(val ? val.value : null)}
+              styles={{ menuPortal: base => ({ ...base, zIndex: 9999 }) }}
+              menuPortalTarget={document.body}
             />
           </div>
 
-          {/* Majors Step-by-Step Manager (Right Column) */}
-          <div className="float-card p-5 flex flex-col min-w-0">
-            <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-2">
-              {t('majorsManager')}
-            </h2>
-            <p className="text-xs text-slate-400 dark:text-slate-500 mb-5">
-              {t('majorsDesc')}
-            </p>
-
-            {/* Dropdown 1: Department select */}
-            <div className="mb-4">
-              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-                {t('selectDept')}
-              </label>
-              <Select
-                isClearable
-                placeholder="Choose department..."
-                options={allDepartments.map(d => ({ value: d.id, label: `${d.name} (${d.code})` }))}
-                value={selectedDept ? { value: selectedDept, label: allDepartments.find(d => d.id === selectedDept)?.name } : null}
-                onChange={val => {
-                  setSelectedDept(val ? val.value : null);
-                  setSelectedMajor(null);
-                }}
-                styles={{ menuPortal: base => ({ ...base, zIndex: 9999 }) }}
-                menuPortalTarget={document.body}
-              />
+          {/* Majors List */}
+          {loading ? (
+            <div className="flex justify-center py-12"><Loader2 size={24} className="animate-spin text-[#D4AF37]" /></div>
+          ) : data.majors.length === 0 ? (
+            <div className="text-center py-12 text-slate-400 dark:text-slate-500">
+              <Layers size={40} className="mx-auto mb-3 opacity-30" />
+              <p className="text-sm">{t('noMajors')}</p>
             </div>
-
-            {/* Dropdown 2: Major select */}
-            <div className="mb-6">
-              <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-                2. Select Major
-              </label>
-              <Select
-                isClearable
-                placeholder={selectedDept ? "Choose major..." : "Select department first"}
-                options={selectedDept ? allMajors.filter(m => m.department === selectedDept).map(m => ({ value: m.id, label: m.name })) : []}
-                value={selectedMajor ? { value: selectedMajor, label: allMajors.find(m => m.id === selectedMajor)?.name } : null}
-                onChange={val => setSelectedMajor(val ? val.value : null)}
-                isDisabled={!selectedDept}
-                styles={{ menuPortal: base => ({ ...base, zIndex: 9999 }) }}
-                menuPortalTarget={document.body}
-              />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-slate-100 dark:border-slate-800">
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{t('majorName')}</th>
+                    <th className="text-left py-3 px-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{t('colDepartment')}</th>
+                    <th className="text-right py-3 px-4 text-xs font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">{t('actions')}</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.majors.map(major => (
+                    <tr key={major.id} className="border-b border-slate-50 dark:border-slate-800/60 hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors group">
+                      <td className="py-3 px-4">
+                        {editMajorId === major.id ? (
+                          <div className="flex gap-2 items-center">
+                            <input
+                              type="text"
+                              className="input mb-0 text-sm flex-1 py-1"
+                              value={editMajorName}
+                              onChange={e => setEditMajorName(e.target.value)}
+                              autoFocus
+                              onKeyDown={e => {
+                                if (e.key === 'Enter') handleSaveEditMajor(major);
+                                if (e.key === 'Escape') setEditMajorId(null);
+                              }}
+                            />
+                            <button
+                              onClick={() => handleSaveEditMajor(major)}
+                              className="btn-ghost p-1.5 text-emerald-600 hover:text-white hover:bg-emerald-500"
+                            >
+                              <Check size={14} />
+                            </button>
+                            <button
+                              onClick={() => setEditMajorId(null)}
+                              className="btn-ghost p-1.5 text-slate-400 hover:text-white hover:bg-slate-400"
+                            >
+                              <X size={14} />
+                            </button>
+                          </div>
+                        ) : (
+                          <span className="font-semibold text-slate-800 dark:text-slate-200">{major.name}</span>
+                        )}
+                      </td>
+                      <td className="py-3 px-4 text-slate-500 dark:text-slate-400">
+                        {allDepartments.find(d => d.id === major.department)?.name || major.department_name || '—'}
+                      </td>
+                      <td className="py-3 px-4 text-right">
+                        <div className="relative inline-block" ref={majorMenuOpen === major.id ? majorMenuRef : null}>
+                          <button
+                            onClick={() => setMajorMenuOpen(majorMenuOpen === major.id ? null : major.id)}
+                            className="btn-ghost p-1.5 opacity-0 group-hover:opacity-100 transition-opacity"
+                            title={t('manageMajor')}
+                          >
+                            <MoreHorizontal size={16} />
+                          </button>
+                          {majorMenuOpen === major.id && (
+                            <div className="absolute end-0 top-8 z-50 w-44 bg-white dark:bg-slate-900 rounded-xl shadow-xl border border-slate-100 dark:border-slate-700 py-1.5 animate-scale-in">
+                              <button
+                                onClick={() => handleStartEditMajor(major)}
+                                className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                              >
+                                <Edit2 size={13} className="text-amber-500" /> {t('editMajor')}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteMajorRow(major)}
+                                className="w-full flex items-center gap-2.5 px-4 py-2 text-sm text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                              >
+                                <Trash2 size={13} /> {t('deleteMajor')}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-
-            {/* Action Card: If Major is selected */}
-            {selectedMajor && (
-              <div className="p-4 rounded-2xl bg-red-50/50 dark:bg-red-500/5 border border-red-200/50 dark:border-red-500/25 mb-6 animate-scale-in">
-                <p className="text-[10px] font-bold text-red-500 uppercase tracking-wider mb-1">
-                  Selected Major Action
-                </p>
-                <h3 className="text-sm font-bold text-slate-800 dark:text-slate-100 mb-3 truncate">
-                  {allMajors.find(m => m.id === selectedMajor)?.name}
-                </h3>
-                <button
-                  type="button"
-                  onClick={handleDeleteMajor}
-                  disabled={majorActionLoading}
-                  className="btn-danger w-full justify-center py-2 text-xs font-semibold"
-                >
-                  {majorActionLoading ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                  Delete Major
-                </button>
-              </div>
-            )}
-
-            {/* Action Form: Add Major (available when department is selected) */}
-            {selectedDept ? (
-              <form onSubmit={handleAddMajor} className="mt-auto pt-5 border-t border-slate-100 dark:border-slate-800">
-                <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
-                  Add Major to Selected Department
-                </label>
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    className="input mb-0 text-sm flex-1 bg-gray-50 dark:bg-slate-800/80"
-                    placeholder="Enter major name..."
-                    value={newMajorName}
-                    onChange={e => setNewMajorName(e.target.value)}
-                    required
-                    disabled={majorActionLoading}
-                  />
-                  <button
-                    type="submit"
-                    disabled={majorActionLoading || !newMajorName.trim()}
-                    className="btn-primary px-3 shrink-0"
-                  >
-                    {majorActionLoading ? <Loader2 size={15} className="animate-spin" /> : <Plus size={15} />}
-                    Add
-                  </button>
-                </div>
-              </form>
-            ) : (
-              <div className="mt-auto pt-5 border-t border-slate-100 dark:border-slate-800 text-center">
-                <p className="text-xs text-slate-400 dark:text-slate-500">
-                  Select a department above to add majors.
-                </p>
-              </div>
-            )}
-          </div>
+          )}
         </div>
       )}
 
@@ -1009,6 +1083,66 @@ const AdminDashboard = () => {
                   {formLoading ? <Loader2 size={16} className="animate-spin" /> : 'Save'}
                 </button>
               </div>
+            </form>
+          </Dialog.Panel>
+        </div>
+      </Dialog>
+
+      {/* ── Add Major Modal ── */}
+      <Dialog open={showAddMajorModal} onClose={() => setShowAddMajorModal(false)} className="relative z-50">
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" aria-hidden="true" />
+        <div className="fixed inset-0 flex items-center justify-center p-4">
+          <Dialog.Panel className="card w-full max-w-sm p-6 animate-scale-in dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl">
+            <div className="flex items-center justify-between mb-5">
+              <Dialog.Title className="text-lg font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <Layers size={18} className="text-purple-500" />
+                {t('addMajor')}
+              </Dialog.Title>
+              <button onClick={() => setShowAddMajorModal(false)} className="btn-ghost p-1.5">
+                <X size={18} />
+              </button>
+            </div>
+
+            <form onSubmit={handleAddMajorSubmit} className="space-y-4">
+              <div>
+                <label className="form-label">{t('colDepartment')}</label>
+                <select
+                  className="input"
+                  value={addMajorDeptId}
+                  onChange={e => setAddMajorDeptId(e.target.value)}
+                  required
+                >
+                  <option value="">— {t('selectDept')} —</option>
+                  {allDepartments.map(d => (
+                    <option key={d.id} value={d.id}>{d.name} ({d.code})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="form-label">{t('majorName')}</label>
+                <input
+                  type="text"
+                  className="input"
+                  value={addMajorName}
+                  onChange={e => setAddMajorName(e.target.value)}
+                  placeholder={t('majorName')}
+                  required
+                  disabled={addMajorLoading}
+                />
+              </div>
+              {addMajorError && (
+                <p className="text-xs text-red-600 bg-red-50 dark:bg-red-900/20 rounded-lg px-3 py-2 animate-slide-down">
+                  {addMajorError}
+                </p>
+              )}
+              <button
+                type="submit"
+                disabled={addMajorLoading || !addMajorName.trim() || !addMajorDeptId}
+                className="btn-gold w-full justify-center border-transparent"
+              >
+                {addMajorLoading ? <Loader2 size={16} className="animate-spin" /> : <Plus size={15} />}
+                {addMajorLoading ? '...' : t('addMajor')}
+              </button>
             </form>
           </Dialog.Panel>
         </div>

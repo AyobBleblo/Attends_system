@@ -5,6 +5,7 @@ import {
   Download, BookOpen, GraduationCap, ChevronDown, ChevronUp,
   Search, RefreshCw, Smartphone, BarChart2, Users
 } from 'lucide-react';
+import { useLanguage } from '../context/LanguageContext';
 
 // ─── Theme-aware helpers (mirrors AttendanceReport approach) ──────────────────
 const useTheme = () => {
@@ -144,7 +145,7 @@ function LectureGrid({ lectures, totalQuota, T }) {
   );
 }
 
-function StudentRow({ student, totalQuota, T, glass, onResetDevice }) {
+function StudentRow({ student, totalQuota, T, glass, onResetDevice, t }) {
   const [open, setOpen] = useState(false);
   const pct = student.attendance_pct;
   const pctCol = pctColor(pct, T);
@@ -170,15 +171,15 @@ function StudentRow({ student, totalQuota, T, glass, onResetDevice }) {
         </div>
         <div style={{ display: 'flex', gap: '1.5rem', alignItems: 'center', flexShrink: 0 }}>
           <div style={{ textAlign: 'center' }}>
-            <p style={{ margin: 0, fontSize: '0.65rem', color: T.textMuted, textTransform: 'uppercase' }}>Present</p>
+            <p style={{ margin: 0, fontSize: '0.65rem', color: T.textMuted, textTransform: 'uppercase' }}>{t('present')}</p>
             <p style={{ margin: 0, fontWeight: 700, color: T.present }}>{student.total_present}</p>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <p style={{ margin: 0, fontSize: '0.65rem', color: T.textMuted, textTransform: 'uppercase' }}>Absent</p>
+            <p style={{ margin: 0, fontSize: '0.65rem', color: T.textMuted, textTransform: 'uppercase' }}>{t('absent')}</p>
             <p style={{ margin: 0, fontWeight: 700, color: T.absent }}>{student.total_absent}</p>
           </div>
           <div style={{ textAlign: 'center' }}>
-            <p style={{ margin: 0, fontSize: '0.65rem', color: T.textMuted, textTransform: 'uppercase' }}>Rate</p>
+            <p style={{ margin: 0, fontSize: '0.65rem', color: T.textMuted, textTransform: 'uppercase' }}>{t('rate')}</p>
             <p style={{ margin: 0, fontWeight: 700, color: pctCol }}>{pct}%</p>
           </div>
           <div style={{ color: T.textMuted }}>
@@ -187,7 +188,7 @@ function StudentRow({ student, totalQuota, T, glass, onResetDevice }) {
           {onResetDevice && (
             <button
               onClick={(e) => { e.stopPropagation(); onResetDevice(student); }}
-              title="Reset device fingerprint for this student"
+              title={t('resetDevice')}
               style={{
                 padding: '0.3rem 0.6rem', borderRadius: 8, fontSize: '0.7rem',
                 background: 'rgba(212,175,55,0.12)', border: '1px solid rgba(212,175,55,0.3)',
@@ -195,7 +196,7 @@ function StudentRow({ student, totalQuota, T, glass, onResetDevice }) {
                 whiteSpace: 'nowrap', flexShrink: 0,
               }}
             >
-              <Smartphone size={12} /> Reset Device
+              <Smartphone size={12} /> {t('resetDevice')}
             </button>
           )}
         </div>
@@ -208,7 +209,7 @@ function StudentRow({ student, totalQuota, T, glass, onResetDevice }) {
           animationName: 'fadeSlide', animationDuration: '0.2s', animationFillMode: 'both',
         }}>
           <p style={{ margin: '0.75rem 0 0.25rem', fontSize: '0.75rem', color: T.textMuted, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            Lecture attendance grid ({student.lectures_held} held / {totalQuota} total quota)
+            {t('lectureGrid', student.lectures_held, totalQuota)}
           </p>
           <LectureGrid lectures={student.lectures} totalQuota={totalQuota} T={T} />
 
@@ -216,7 +217,7 @@ function StudentRow({ student, totalQuota, T, glass, onResetDevice }) {
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.8rem' }}>
               <thead>
                 <tr>
-                  {['#', 'Date', 'Time', 'Status'].map(h => (
+                  {['#', 'Date', 'Time', t('present')].map(h => (
                     <th key={h} style={{
                       padding: '0.5rem 0.75rem', textAlign: 'left',
                       color: T.gold, fontWeight: 600, fontSize: '0.7rem',
@@ -239,7 +240,7 @@ function StudentRow({ student, totalQuota, T, glass, onResetDevice }) {
                         color: lec.status === 'Present' ? T.present : T.absent,
                         border: `1px solid ${lec.status === 'Present' ? 'rgba(34,197,94,0.3)' : 'rgba(239,68,68,0.3)'}`,
                       }}>
-                        {lec.status}
+                        {lec.status === 'Present' ? t('present') : t('absent')}
                       </span>
                     </td>
                   </tr>
@@ -259,6 +260,7 @@ export default function AdminReport() {
   const T      = makeTokens(isDark);
   const glass     = makeGlass(T);
   const goldGlass = makeGoldGlass(T, glass);
+  const { t }  = useLanguage();
 
   // Step 1: select professor
   const [professors, setProfessors]   = useState([]);
@@ -311,7 +313,7 @@ export default function AdminReport() {
   useEffect(() => { fetchReport(); }, [fetchReport]);
 
   const handleResetDevice = async (student) => {
-    if (!window.confirm(`Reset device fingerprint for ${student.student_name}?\nThey will be able to scan from a new device.`)) return;
+    if (!window.confirm(`${t('resetDevice')} ${student.student_name}?\nThey will be able to scan from a new device.`)) return;
     try {
       const res = await api.post(`/reset-fingerprint/${student.student_id}/`);
       setResetMsg(res.data.message || 'Device reset successfully.');
@@ -416,18 +418,18 @@ export default function AdminReport() {
             background: `linear-gradient(135deg, ${T.gold} 0%, #f5e06e 50%, ${T.gold} 100%)`,
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
           }}>
-            Admin Attendance Report
+            {t('adminReport')}
           </h1>
         </div>
         <p style={{ margin: 0, fontSize: '0.85rem', color: T.textMuted, paddingLeft: '3.25rem' }}>
-          Select a professor and course to view & export the attendance report
+          {t('adminReportDesc')}
         </p>
       </div>
 
       {/* ── Step 1 + 2: Professor → Course selectors ── */}
       <div style={{ ...glass, padding: '1.5rem', marginBottom: '1.5rem' }}>
         <p style={{ margin: '0 0 1rem', fontSize: '0.8rem', color: T.textMuted, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          Filter by Professor &amp; Course
+          {t('filterProfCourse')}
         </p>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(240px, 1fr))', gap: '1rem' }}>
 
@@ -435,7 +437,7 @@ export default function AdminReport() {
           <div>
             <label style={labelStyle}>
               <GraduationCap size={12} style={{ display: 'inline', marginRight: 4 }} />
-              1 · Select Professor
+              {t('selectProfessor')}
             </label>
             <select
               value={professorId}
@@ -447,7 +449,7 @@ export default function AdminReport() {
               }}
               style={selectStyle}
             >
-              <option value="">— Choose a professor —</option>
+              <option value="">{t('chooseProfessor')}</option>
               {professors.map(p => (
                 <option key={p.id} value={p.id}>{p.name}</option>
               ))}
@@ -458,7 +460,7 @@ export default function AdminReport() {
           <div>
             <label style={{ ...labelStyle, opacity: !professorId ? 0.4 : 1 }}>
               <BookOpen size={12} style={{ display: 'inline', marginRight: 4 }} />
-              2 · Select Course
+              {t('selectCourse')}
             </label>
             <select
               value={courseId}
@@ -466,7 +468,7 @@ export default function AdminReport() {
               disabled={!professorId}
               style={{ ...selectStyle, opacity: !professorId ? 0.5 : 1, cursor: !professorId ? 'not-allowed' : 'pointer' }}
             >
-              <option value="">— Choose a course —</option>
+              <option value="">{t('chooseCourse')}</option>
               {courses.map(c => (
                 <option key={c.id} value={c.id}>{c.code} · {c.name}</option>
               ))}
@@ -478,13 +480,13 @@ export default function AdminReport() {
             <div>
               <label style={labelStyle}>
                 <Search size={12} style={{ display: 'inline', marginRight: 4 }} />
-                Search Students
+                {t('searchStudents')}
               </label>
               <div style={{ position: 'relative' }}>
                 <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: T.textMuted }} />
                 <input
                   value={search} onChange={e => setSearch(e.target.value)}
-                  placeholder="Name or ID…"
+                  placeholder={t('nameOrId')}
                   style={{ ...selectStyle, paddingLeft: '2.2rem' }}
                 />
               </div>
@@ -502,7 +504,7 @@ export default function AdminReport() {
               opacity: (!courseId || loading) ? 0.5 : 1,
             }}>
             <RefreshCw size={14} style={{ animation: loading ? 'spin 1s linear infinite' : 'none' }} />
-            {loading ? 'Loading…' : 'Load Report'}
+            {loading ? t('loading') : t('loadReport')}
           </button>
           <button onClick={exportCSV} disabled={!report || !filtered.length}
             style={{
@@ -512,7 +514,7 @@ export default function AdminReport() {
               display: 'flex', alignItems: 'center', gap: 6,
               opacity: (!report || !filtered.length) ? 0.5 : 1,
             }}>
-            <Download size={14} /> Export CSV
+            <Download size={14} /> {t('exportCsv')}
           </button>
         </div>
       </div>
@@ -533,7 +535,7 @@ export default function AdminReport() {
       {!professorId && (
         <div style={{ textAlign: 'center', padding: '5rem 2rem', color: T.textMuted }}>
           <GraduationCap size={52} style={{ marginBottom: '1rem', opacity: 0.3 }} />
-          <p style={{ margin: 0, fontSize: '1rem' }}>Start by selecting a professor above.</p>
+          <p style={{ margin: 0, fontSize: '1rem' }}>{t('startByProf')}</p>
         </div>
       )}
 
@@ -542,8 +544,8 @@ export default function AdminReport() {
           <BookOpen size={48} style={{ marginBottom: '1rem', opacity: 0.3 }} />
           <p style={{ margin: 0, fontSize: '1rem' }}>
             {courses.length === 0
-              ? 'No courses found for this professor in the active semester.'
-              : 'Now select a course to generate the attendance report.'}
+              ? t('noCourses')
+              : t('selectCoursePrompt')}
           </p>
         </div>
       )}
@@ -560,7 +562,7 @@ export default function AdminReport() {
           {/* Course meta banner */}
           <div style={{ ...goldGlass, padding: '1rem 1.5rem', marginBottom: '1.25rem', display: 'flex', flexWrap: 'wrap', gap: '1rem', alignItems: 'center', justifyContent: 'space-between' }}>
             <div>
-              <p style={{ margin: 0, fontSize: '0.7rem', color: T.gold, textTransform: 'uppercase', letterSpacing: '0.08em' }}>Report For</p>
+              <p style={{ margin: 0, fontSize: '0.7rem', color: T.gold, textTransform: 'uppercase', letterSpacing: '0.08em' }}>{t('reportFor')}</p>
               <p style={{ margin: 0, fontSize: '1.1rem', fontWeight: 700, color: T.text }}>
                 {report.course_code} · {report.course_name}
               </p>
@@ -570,22 +572,22 @@ export default function AdminReport() {
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
               <span style={{ padding: '0.3rem 0.8rem', borderRadius: 999, background: T.goldDim, color: T.gold, fontSize: '0.75rem', fontWeight: 700, border: `1px solid ${T.goldBorder}` }}>
-                {report.lectures_held} sessions held
+                {report.lectures_held} {t('sessionsHeld')}
               </span>
               <span style={{ padding: '0.3rem 0.8rem', borderRadius: 999, background: 'rgba(255,255,255,0.06)', color: T.textMuted, fontSize: '0.75rem', fontWeight: 600, border: `1px solid ${T.border}` }}>
-                {report.total_lectures} lecture quota
+                {report.total_lectures} {t('lectureQuota')}
               </span>
             </div>
           </div>
 
           {/* Summary stats */}
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(160px, 1fr))', gap: '0.75rem', marginBottom: '1.5rem' }}>
-            <StatCard label="Students"       value={report?.students?.length || 0} icon={Users}    T={T} glass={glass} />
-            <StatCard label="Sessions Held"  value={report.lectures_held}           color={T.gold}  T={T} glass={glass} />
-            <StatCard label="Lecture Quota"  value={report.total_lectures}          color={T.textMuted} T={T} glass={glass} />
+            <StatCard label={t('studentsLabel')}   value={report?.students?.length || 0} icon={Users}    T={T} glass={glass} />
+            <StatCard label={t('sessionsHeld')}  value={report.lectures_held}           color={T.gold}  T={T} glass={glass} />
+            <StatCard label={t('lectureQuota')}  value={report.total_lectures}          color={T.textMuted} T={T} glass={glass} />
             {report.total_instructor_hours != null && (
               <StatCard
-                label="Instructor Hours"
+                label={t('instructorHours')}
                 value={(() => {
                   const h = Math.floor(report.total_instructor_hours);
                   const m = Math.round((report.total_instructor_hours - h) * 60);
@@ -599,18 +601,19 @@ export default function AdminReport() {
           {/* Student rows */}
           {filtered.length === 0 ? (
             <div style={{ ...glass, padding: '2.5rem', textAlign: 'center', color: T.textMuted }}>
-              No students match your search.
+              {t('noStudentsMatch')}
             </div>
           ) : (
             <div>
               <p style={{ fontSize: '0.75rem', color: T.textMuted, marginBottom: '0.75rem' }}>
-                Showing {filtered.length} of {report?.students?.length || 0} students — click a row to expand lecture details ↓
+                {t('showingOf', filtered.length, report?.students?.length || 0)}
               </p>
               {filtered.map(s => (
                 <StudentRow
                   key={s.student_id} student={s} totalQuota={report.total_lectures}
                   T={T} glass={glass}
                   onResetDevice={handleResetDevice}
+                  t={t}
                 />
               ))}
             </div>
