@@ -46,6 +46,7 @@ yarn-error.log*
 *.swo
 
 # Project specific
+laptop
 backend/staticfiles/
 frontend/dist/
 frontend/build/

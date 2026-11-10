@@ -74,7 +74,7 @@ function LoginPage() {
       >
         {/* Logo & University Name */}
         <div className="text-center mb-10 flex flex-col items-center">
-          <div className="w-32 h-32 mb-4 relative z-10">
+          <div className="w-48 h-48 mb-4 relative z-10">
             <img
               src="/Alarab_logo.png"
               alt="University Logo"
